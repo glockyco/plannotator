@@ -106,6 +106,33 @@ describe("resolveMarkdownFile", () => {
     });
   });
 
+  test("resolves @ filename via fallback when @ file does not exist", async () => {
+    const root = createTempProject({ "README.md": "# Hello" });
+    const result = resolveMarkdownFile("@README.md", root);
+    expect(result).toEqual({
+      kind: "found",
+      path: resolve(root, "README.md"),
+    });
+  });
+
+  test("prioritizes real @ filename before fallback", async () => {
+    const root = createTempProject({ "@README.md": "# At" });
+    const result = resolveMarkdownFile("@README.md", root);
+    expect(result).toEqual({
+      kind: "found",
+      path: resolve(root, "@README.md"),
+    });
+  });
+
+  test("resolves quoted @ filename", async () => {
+    const root = createTempProject({ "README.md": "# Hello" });
+    const result = resolveMarkdownFile('"@README.md"', root);
+    expect(result).toEqual({
+      kind: "found",
+      path: resolve(root, "README.md"),
+    });
+  });
+
   test("resolves relative paths with Windows separators", async () => {
     const root = createTempProject({ "docs/test-plan.md": "# Test plan\n" });
     const result = resolveMarkdownFile("docs\\test-plan.md", root);
@@ -143,6 +170,19 @@ describe("resolveMarkdownFile", () => {
     const result = resolveMarkdownFile("plan.md", root);
     expect(result.kind).toBe("ambiguous");
     if (result.kind === "ambiguous") {
+      expect(result.matches).toHaveLength(2);
+    }
+  });
+
+  test("returns ambiguous in @ fallback when target exists multiple times", async () => {
+    const root = createTempProject({
+      "docs/plan.md": "# Plan 1",
+      "api/plan.md": "# Plan 2",
+    });
+    const result = resolveMarkdownFile("@plan.md", root);
+    expect(result.kind).toBe("ambiguous");
+    if (result.kind === "ambiguous") {
+      expect(result.input).toBe("@plan.md");
       expect(result.matches).toHaveLength(2);
     }
   });
@@ -188,6 +228,12 @@ describe("resolveMarkdownFile", () => {
     const root = createTempProject();
     const result = resolveMarkdownFile("nope.md", root);
     expect(result.kind).toBe("not_found");
+  });
+
+  test("returns not_found for @ path that cannot be resolved", async () => {
+    const root = createTempProject();
+    const result = resolveMarkdownFile("@nope.md", root);
+    expect(result).toEqual({ kind: "not_found", input: "@nope.md" });
   });
 
   test("handles deeply nested files", async () => {

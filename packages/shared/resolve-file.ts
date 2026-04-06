@@ -78,6 +78,20 @@ function isSearchableMarkdownPath(input: string): boolean {
 	return MARKDOWN_PATH_REGEX.test(input.trim());
 }
 
+function stripWrappingQuotes(input: string): string {
+	if (input.length < 2) {
+		return input;
+	}
+
+	const first = input[0];
+	const last = input[input.length - 1];
+	if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+		return input.slice(1, -1);
+	}
+
+	return input;
+}
+
 /** Check if a path looks like a Windows absolute path (e.g. C:\ or C:/) */
 function hasWindowsDriveLetter(input: string): boolean {
 	return /^[a-zA-Z]:[/\\]/.test(input);
@@ -155,12 +169,10 @@ export function isAbsoluteMarkdownPath(
  * @param input - User-provided path (absolute, relative, or bare filename)
  * @param projectRoot - Project root directory to search within
  */
-export function resolveMarkdownFile(
+function resolveMarkdownFileCore(
 	input: string,
 	projectRoot: string,
 ): ResolveResult {
-	// Trim whitespace/CR that may leak from Windows shell pipelines
-	input = input.trim();
 	const normalizedInput = normalizeMarkdownPathInput(input);
 	const searchInput = normalizeSeparators(normalizedInput);
 	const isBareFilename = !searchInput.includes("/");
@@ -216,6 +228,47 @@ export function resolveMarkdownFile(
 	}
 
 	return { kind: "not_found", input };
+}
+
+/**
+ * Resolve a markdown file path within a project root.
+ *
+ * @param input - User-provided path (absolute, relative, or bare filename)
+ * @param projectRoot - Project root directory to search within
+ */
+export function resolveMarkdownFile(
+	input: string,
+	projectRoot: string,
+): ResolveResult {
+	const originalInput = input.trim();
+	const unquotedInput = stripWrappingQuotes(originalInput);
+
+	const primary = resolveMarkdownFileCore(unquotedInput, projectRoot);
+	if (primary.kind === "found") {
+		return primary;
+	}
+	if (primary.kind === "ambiguous") {
+		return { ...primary, input: originalInput };
+	}
+
+	if (!unquotedInput.startsWith("@")) {
+		return { kind: "not_found", input: originalInput };
+	}
+
+	const normalizedInput = unquotedInput.replace(/^@+/, "");
+	if (!normalizedInput) {
+		return { kind: "not_found", input: originalInput };
+	}
+
+	const fallback = resolveMarkdownFileCore(normalizedInput, projectRoot);
+	if (fallback.kind === "found") {
+		return fallback;
+	}
+	if (fallback.kind === "ambiguous") {
+		return { ...fallback, input: originalInput };
+	}
+
+	return { kind: "not_found", input: originalInput };
 }
 
 /**

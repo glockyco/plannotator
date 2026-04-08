@@ -26,7 +26,7 @@
 
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'Source Code Pro', ui-monospace, monospace;
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 
   --code-bg: #2a2a2a;
   --focus-highlight: #3584E4;

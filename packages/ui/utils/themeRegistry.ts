@@ -119,6 +119,36 @@ export const BUILT_IN_THEMES: ThemeInfo[] = [
     },
   },
   {
+    id: 'kanagawa-dragon',
+    name: 'Kanagawa Dragon',
+    builtIn: true,
+    modeSupport: 'dark-only',
+    colors: {
+      dark: { primary: '#7fb4ca', secondary: '#2a2625', accent: '#7aa89f', background: '#181616', foreground: '#c8c093' },
+      light: { primary: '#7fb4ca', secondary: '#2a2625', accent: '#7aa89f', background: '#181616', foreground: '#c8c093' },
+    },
+  },
+  {
+    id: 'kanagawa-lotus',
+    name: 'Kanagawa Lotus',
+    builtIn: true,
+    modeSupport: 'light-only',
+    colors: {
+      dark: { primary: '#4d699b', secondary: '#dcd5ac', accent: '#624c83', background: '#f2ecbc', foreground: '#545464' },
+      light: { primary: '#4d699b', secondary: '#dcd5ac', accent: '#624c83', background: '#f2ecbc', foreground: '#545464' },
+    },
+  },
+  {
+    id: 'kanagawa-wave',
+    name: 'Kanagawa Wave',
+    builtIn: true,
+    modeSupport: 'dark-only',
+    colors: {
+      dark: { primary: '#7e9cd8', secondary: '#363646', accent: '#957fb8', background: '#1f1f28', foreground: '#dcd7ba' },
+      light: { primary: '#7e9cd8', secondary: '#363646', accent: '#957fb8', background: '#1f1f28', foreground: '#dcd7ba' },
+    },
+  },
+  {
     id: 'monokai-pro',
     name: 'Monokai Pro',
     builtIn: true,

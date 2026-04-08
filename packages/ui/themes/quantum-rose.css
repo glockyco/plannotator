@@ -34,7 +34,7 @@
   --font-sans: Quicksand, sans-serif;
   --font-serif: Playfair Display, serif;
   --font-mono: Space Mono, monospace;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   --shadow-2xs: 0px 3px 0px 0px hsl(300 80% 50% / 0.09);
   --shadow-xs: 0px 3px 0px 0px hsl(300 80% 50% / 0.09);
   --shadow-sm: 0px 3px 0px 0px hsl(300 80% 50% / 0.18), 0px 1px 2px -1px hsl(300 80% 50% / 0.18);
@@ -89,7 +89,7 @@
   --font-sans: Poppins, sans-serif;
   --font-serif: Playfair Display, serif;
   --font-mono: Space Mono, monospace;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   --shadow-2xs: 0px 3px 0px 0px hsl(330 70% 30% / 0.09);
   --shadow-xs: 0px 3px 0px 0px hsl(330 70% 30% / 0.09);
   --shadow-sm: 0px 3px 0px 0px hsl(330 70% 30% / 0.18), 0px 1px 2px -1px hsl(330 70% 30% / 0.18);

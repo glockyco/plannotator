@@ -26,7 +26,7 @@
 
   --font-sans: system-ui, sans-serif;
   --font-mono: 'Fira Code', ui-monospace, monospace;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 
   --code-bg: #181825;
   --focus-highlight: #94e2d5;

@@ -26,7 +26,7 @@
 
   --font-sans: system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 
   --code-bg: #141414;
   --focus-highlight: #88C0D0;

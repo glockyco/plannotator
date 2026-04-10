@@ -35,6 +35,21 @@ export const SETTINGS = {
 
   // --- Diff display options (namespaced under diffOptions in config.json) ---
 
+  defaultDiffType: {
+    defaultValue: 'unstaged' as 'uncommitted' | 'unstaged' | 'staged',
+    fromCookie: () => {
+      const v = storage.getItem('plannotator-default-diff-type');
+      return v === 'uncommitted' || v === 'unstaged' || v === 'staged' ? v : undefined;
+    },
+    toCookie: (v: string) => storage.setItem('plannotator-default-diff-type', v),
+    serverKey: 'diffOptions',
+    fromServer: (sc: Record<string, unknown>) => {
+      const v = (sc.diffOptions as Record<string, unknown> | undefined)?.defaultDiffType;
+      return v === 'uncommitted' || v === 'unstaged' || v === 'staged' ? v : undefined;
+    },
+    toServer: (v: string) => ({ diffOptions: { defaultDiffType: v } }),
+  },
+
   diffStyle: {
     defaultValue: 'split' as 'split' | 'unified',
     fromCookie: () => {

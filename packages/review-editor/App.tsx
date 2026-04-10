@@ -19,6 +19,8 @@ import { getAgentSwitchSettings, getEffectiveAgentName } from '@plannotator/ui/u
 import { getAIProviderSettings, saveAIProviderSettings, getPreferredModel } from '@plannotator/ui/utils/aiProvider';
 import { AISetupDialog } from '@plannotator/ui/components/AISetupDialog';
 import { needsAISetup } from '@plannotator/ui/utils/aiSetup';
+import { DiffTypeSetupDialog } from '@plannotator/ui/components/DiffTypeSetupDialog';
+import { needsDiffTypeSetup } from '@plannotator/ui/utils/diffTypeSetup';
 import { CodeAnnotation, CodeAnnotationType, SelectedLineRange, TokenAnnotationMeta, ConventionalLabel, ConventionalDecoration } from '@plannotator/ui/types';
 import { useResizablePanel } from '@plannotator/ui/hooks/useResizablePanel';
 import { useCodeAnnotationDraft } from '@plannotator/ui/hooks/useCodeAnnotationDraft';
@@ -362,6 +364,9 @@ const ReviewApp: React.FC = () => {
     };
   });
   const [showAISetup, setShowAISetup] = useState(false);
+  const [aiCheckComplete, setAiCheckComplete] = useState(false);
+  const [showDiffTypeSetup, setShowDiffTypeSetup] = useState(false);
+  const [diffTypeSetupPending, setDiffTypeSetupPending] = useState(false);
   const [sidebarTabOverride, setSidebarTabOverride] = useState<'ai' | undefined>(undefined);
   const aiChat = useAIChat({
     patch: diffData?.rawPatch ?? '',
@@ -383,8 +388,9 @@ const ReviewApp: React.FC = () => {
             setShowAISetup(true);
           }
         }
+        setAiCheckComplete(true);
       })
-      .catch(() => {});
+      .catch(() => { setAiCheckComplete(true); });
   }, []);
 
   const handleAIConfigChange = useCallback((config: { providerId?: string | null; model?: string | null }) => {
@@ -662,6 +668,10 @@ const ReviewApp: React.FC = () => {
         }
         if (data.error) setDiffError(data.error);
         if (data.isWSL) setIsWSL(true);
+        // Mark diff type setup as pending on first run (local mode only)
+        if (data.diffType && !data.prMetadata && data.gitContext?.vcsType !== 'p4' && needsDiffTypeSetup()) {
+          setDiffTypeSetupPending(true);
+        }
       })
       .catch(() => {
         // Not in API mode - use demo content
@@ -675,6 +685,14 @@ const ReviewApp: React.FC = () => {
       })
       .finally(() => setIsLoading(false));
   }, []);
+
+  // Show diff type setup dialog only after AI setup dialog is dismissed (avoid stacking)
+  useEffect(() => {
+    if (diffTypeSetupPending && aiCheckComplete && !showAISetup) {
+      setDiffTypeSetupPending(false);
+      setShowDiffTypeSetup(true);
+    }
+  }, [diffTypeSetupPending, aiCheckComplete, showAISetup]);
 
   const handleDiffStyleChange = useCallback((style: 'split' | 'unified') => {
     configStore.set('diffStyle', style);
@@ -891,6 +909,7 @@ const ReviewApp: React.FC = () => {
       const nextFiles = parseDiffToFiles(data.rawPatch);
       dockApi?.getPanel(REVIEW_DIFF_PANEL_ID)?.api.close();
       needsInitialDiffPanel.current = true;
+      setDiffData(prev => prev ? { ...prev, rawPatch: data.rawPatch, gitRef: data.gitRef, diffType: data.diffType } : prev);
       setFiles(nextFiles);
       setDiffType(data.diffType);
       setActiveFileIndex(0);
@@ -1906,6 +1925,16 @@ const ReviewApp: React.FC = () => {
             handleAIConfigChange({ providerId });
           }}
         />
+
+        {/* Diff type setup dialog — first-run only */}
+        {showDiffTypeSetup && (
+          <DiffTypeSetupDialog
+            onComplete={(selected) => {
+              setShowDiffTypeSetup(false);
+              if (selected !== diffType) handleDiffSwitch(selected);
+            }}
+          />
+        )}
 
         {/* Completion overlay - shown after approve/feedback/exit */}
         <CompletionOverlay

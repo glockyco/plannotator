@@ -122,6 +122,11 @@ const LINE_DIFF_OPTIONS = [
   { value: 'char' as const, label: 'Char' },
   { value: 'none' as const, label: 'None' },
 ];
+const DEFAULT_DIFF_TYPE_OPTIONS = [
+  { value: 'uncommitted' as const, label: 'All Changes' },
+  { value: 'unstaged' as const, label: 'Unstaged' },
+  { value: 'staged' as const, label: 'Staged' },
+];
 
 function SegmentedControl<T extends string>({ options, value, onChange }: {
   options: { value: T; label: string }[];
@@ -178,6 +183,7 @@ function ToggleSwitch({ checked, onChange, label, description }: {
 }
 
 const ReviewDisplayTab: React.FC = () => {
+  const defaultDiffType = useConfigValue('defaultDiffType');
   const diffStyle = useConfigValue('diffStyle');
   const diffOverflow = useConfigValue('diffOverflow');
   const diffIndicators = useConfigValue('diffIndicators');
@@ -194,6 +200,17 @@ const ReviewDisplayTab: React.FC = () => {
 
   return (
     <>
+      {/* Default Diff View */}
+      <div className="space-y-2">
+        <div>
+          <div className="text-sm font-medium">Default Diff View</div>
+          <div className="text-xs text-muted-foreground">Which changes to show when opening a review</div>
+        </div>
+        <SegmentedControl options={DEFAULT_DIFF_TYPE_OPTIONS} value={defaultDiffType} onChange={(v) => configStore.set('defaultDiffType', v)} />
+      </div>
+
+      <div className="border-t border-border" />
+
       {/* Font Family */}
       <div className="space-y-2">
         <div>

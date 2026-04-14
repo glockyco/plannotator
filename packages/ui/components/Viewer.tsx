@@ -836,6 +836,25 @@ const InlineMarkdown: React.FC<{ text: string; onOpenLinkedDoc?: (path: string) 
       continue;
     }
 
+    // Hex color swatch — 3/4-digit forms need an a-f letter to avoid matching issue refs like #123.
+    match = remaining.match(/^(#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{4}|(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3}))(?![0-9a-fA-F\w])/);
+    if (match) {
+      const hex = match[1];
+      parts.push(
+        <span key={key++} className="inline-flex items-center gap-1 align-middle">
+          <span
+            className="inline-block w-3.5 h-3.5 rounded-sm border border-black/20 dark:border-white/20 flex-shrink-0"
+            style={{ backgroundColor: hex }}
+            title={hex}
+          />
+          <code className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">{hex}</code>
+        </span>
+      );
+      remaining = remaining.slice(match[0].length);
+      previousChar = match[0][match[0].length - 1] || previousChar;
+      continue;
+    }
+
     // Wikilinks: [[filename]] or [[filename|display text]]
     match = remaining.match(/^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/);
     if (match) {
@@ -972,7 +991,7 @@ const InlineMarkdown: React.FC<{ text: string; onOpenLinkedDoc?: (path: string) 
     }
 
     // Find next special character or consume one regular character
-    const nextSpecial = remaining.slice(1).search(/[\*_`\[!~\\<]/);
+    const nextSpecial = remaining.slice(1).search(/[\*_`\[!~\\<#]/);
     if (nextSpecial === -1) {
       parts.push(remaining);
       previousChar = remaining[remaining.length - 1] || previousChar;

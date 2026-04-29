@@ -26,6 +26,11 @@ const OPTIONS: { value: DefaultDiffType; label: string; description: string }[] 
     label: 'Committed',
     description: "Everything you've committed on this branch",
   },
+  {
+    value: 'all',
+    label: 'All Files (HEAD)',
+    description: "Every tracked file at HEAD, shown as additions",
+  },
 ];
 
 interface DiffTypeSetupDialogProps {

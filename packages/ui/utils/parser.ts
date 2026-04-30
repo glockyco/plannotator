@@ -1,4 +1,4 @@
-import { Block, type Annotation, type EditorAnnotation, type ImageAttachment } from '../types';
+import { Block, type Annotation, type CodeAnnotation, type EditorAnnotation, type ImageAttachment } from '../types';
 import { planDenyFeedback } from '@plannotator/shared/feedback-templates';
 
 /**
@@ -689,3 +689,37 @@ export const exportEditorAnnotations = (editorAnnotations: EditorAnnotation[]): 
   return output;
 };
 
+export const exportCodeFileAnnotations = (annotations: CodeAnnotation[]): string => {
+  if (annotations.length === 0) return '';
+
+  let output = `\n# Code File Feedback\n\nThe following feedback is on code files referenced from the reviewed document.\n\n`;
+  const sorted = [...annotations].sort((a, b) => {
+    if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
+    if (a.lineStart !== b.lineStart) return a.lineStart - b.lineStart;
+    return a.createdAt - b.createdAt;
+  });
+
+  sorted.forEach((ann, index) => {
+    const lineRange = ann.lineStart === ann.lineEnd
+      ? `line ${ann.lineStart}`
+      : `lines ${ann.lineStart}-${ann.lineEnd}`;
+
+    output += `## ${index + 1}. ${ann.filePath} (${lineRange})\n`;
+    if (ann.originalCode) {
+      output += `\`\`\`\n${ann.originalCode}\n\`\`\`\n`;
+    }
+    if (ann.text) {
+      output += `> ${ann.text}\n`;
+    }
+    if (ann.images && ann.images.length > 0) {
+      output += `**Attached images:**\n`;
+      ann.images.forEach((img) => {
+        output += `- [${img.name}] \`${img.path}\`\n`;
+      });
+    }
+    output += '\n';
+  });
+
+  output += `---\n`;
+  return output;
+};

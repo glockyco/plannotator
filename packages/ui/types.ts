@@ -107,6 +107,7 @@ export interface CodeAnnotation {
   lineEnd: number;
   side: 'old' | 'new'; // Maps to 'deletions' | 'additions' in @pierre/diffs
   text?: string;
+  images?: ImageAttachment[];
   suggestedCode?: string;
   originalCode?: string; // Original selected lines for suggestion diff
   charStart?: number; // Character offset within lineStart (token-level selection)

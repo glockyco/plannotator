@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { CodeAnnotation } from '@plannotator/ui/types';
 import type { AvailableBranches, DiffOption, WorktreeInfo } from '@plannotator/shared/types';
-import { buildFileTree, getAncestorPaths, getAllFolderPaths } from '../utils/buildFileTree';
+import { buildFileTree, getAncestorPaths, getAllFolderPaths, getVisualFileOrder } from '../utils/buildFileTree';
 import { FileTreeNodeItem } from './FileTreeNode';
 import { BaseBranchPicker } from './BaseBranchPicker';
 import { DiffTypePicker } from './DiffTypePicker';
@@ -52,6 +52,9 @@ interface FileTreeProps {
   activeSearchMatchId?: string | null;
   onSelectSearchMatch?: (matchId: string) => void;
   onStepSearchMatch?: (direction: 1 | -1) => void;
+  onSelectAllFiles?: () => void;
+  isAllFilesActive?: boolean;
+  scrollHighlightIndex?: number;
 }
 
 export const FileTree: React.FC<FileTreeProps> = ({
@@ -95,8 +98,15 @@ export const FileTree: React.FC<FileTreeProps> = ({
   activeSearchMatchId,
   onSelectSearchMatch,
   onStepSearchMatch,
+  onSelectAllFiles,
+  isAllFilesActive = false,
+  scrollHighlightIndex,
 }) => {
   const isSearchVisible = !!onSearchChange && (isSearchOpen || !!searchQuery.trim());
+
+  const tree = useMemo(() => buildFileTree(files), [files]);
+  const allFolderPaths = useMemo(() => getAllFolderPaths(tree), [tree]);
+  const visualOrder = useMemo(() => getVisualFileOrder(tree), [tree]);
 
   // Keyboard navigation: j/k or arrow keys
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -121,22 +131,26 @@ export const FileTree: React.FC<FileTreeProps> = ({
       return;
     }
 
+    const visualPos = visualOrder.indexOf(activeFileIndex);
+
     if (e.key === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
-      const nextIndex = Math.min(activeFileIndex + 1, files.length - 1);
-      onSelectFile(nextIndex);
+      if (visualPos < visualOrder.length - 1) {
+        onSelectFile(visualOrder[visualPos + 1]);
+      }
     } else if (e.key === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
-      const prevIndex = Math.max(activeFileIndex - 1, 0);
-      onSelectFile(prevIndex);
+      if (visualPos > 0) {
+        onSelectFile(visualOrder[visualPos - 1]);
+      }
     } else if (e.key === 'Home') {
       e.preventDefault();
-      onSelectFile(0);
+      onSelectFile(visualOrder[0]);
     } else if (e.key === 'End') {
       e.preventDefault();
-      onSelectFile(files.length - 1);
+      onSelectFile(visualOrder[visualOrder.length - 1]);
     }
-  }, [enableKeyboardNav, activeFileIndex, files.length, onSelectFile]);
+  }, [enableKeyboardNav, activeFileIndex, visualOrder, onSelectFile]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -154,9 +168,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
   const getAnnotationCount = useCallback((filePath: string) => {
     return annotationCountMap.get(filePath) ?? 0;
   }, [annotationCountMap]);
-
-  const tree = useMemo(() => buildFileTree(files), [files]);
-  const allFolderPaths = useMemo(() => getAllFolderPaths(tree), [tree]);
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(allFolderPaths));
   const [prevTree, setPrevTree] = useState(tree);
@@ -398,13 +409,35 @@ export const FileTree: React.FC<FileTreeProps> = ({
             </div>
           )
         ) : (
-          tree.map(node => (
+          <>
+          {onSelectAllFiles && (
+            <button
+              onClick={onSelectAllFiles}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors mb-0.5 ${
+                isAllFilesActive
+                  ? 'bg-primary/15 text-primary font-medium'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m-13.5 0A2.25 2.25 0 003 12v3a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 15v-3a2.25 2.25 0 00-2.25-2.25m-13.5 0h13.5" />
+              </svg>
+              <span>All files</span>
+              <span className="ml-auto text-[10px] tabular-nums opacity-60">
+                <span className="text-green-500">+{files.reduce((s, f) => s + f.additions, 0)}</span>
+                {' '}
+                <span className="text-red-500">-{files.reduce((s, f) => s + f.deletions, 0)}</span>
+              </span>
+            </button>
+          )}
+          {tree.map(node => (
             <FileTreeNodeItem
               key={node.type === 'file' ? node.path : `folder:${node.path}`}
               node={node}
               expandedFolders={expandedFolders}
               onToggleFolder={handleToggleFolder}
-              activeFileIndex={activeFileIndex}
+              activeFileIndex={isAllFilesActive ? -1 : activeFileIndex}
+              scrollHighlightIndex={isAllFilesActive ? scrollHighlightIndex : undefined}
               onSelectFile={onSelectFile}
               onDoubleClickFile={onDoubleClickFile}
               viewedFiles={viewedFiles}
@@ -413,7 +446,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
               getAnnotationCount={getAnnotationCount}
               stagedFiles={stagedFiles}
             />
-          ))
+          ))}
+          </>
         )}
       </div>
       </OverlayScrollArea>

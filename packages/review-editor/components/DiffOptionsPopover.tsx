@@ -82,17 +82,18 @@ export const DiffOptionsPopover: React.FC = () => {
         <Popover.Content
           align="end"
           sideOffset={6}
-          className="z-50 w-64 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden origin-[var(--radix-popover-content-transform-origin)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          className="z-50 w-72 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden origin-[var(--radix-popover-content-transform-origin)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         >
           <div className="p-2.5 space-y-2">
             <div className="space-y-1.5">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">Layout</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
                     <CompactSegmented options={DIFF_STYLE_OPTIONS} value={diffStyle} onChange={(v) => configStore.set('diffStyle', v)} />
                   </div>
-                  <div>
+                  <div className="w-px h-5 bg-border/50 flex-shrink-0" />
+                  <div className="flex-1">
                     <CompactSegmented options={OVERFLOW_OPTIONS} value={diffOverflow} onChange={(v) => configStore.set('diffOverflow', v)} />
                   </div>
                 </div>

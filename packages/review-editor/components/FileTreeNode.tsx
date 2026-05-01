@@ -13,6 +13,7 @@ interface FileTreeNodeProps {
   hideViewedFiles: boolean;
   getAnnotationCount: (filePath: string) => number;
   stagedFiles?: Set<string>;
+  scrollHighlightIndex?: number;
 }
 
 function hasVisibleChildren(
@@ -44,6 +45,7 @@ export const FileTreeNodeItem: React.FC<FileTreeNodeProps> = ({
   hideViewedFiles,
   getAnnotationCount,
   stagedFiles,
+  scrollHighlightIndex,
 }) => {
   const paddingLeft = 4 + node.depth * 8;
 
@@ -92,6 +94,7 @@ export const FileTreeNodeItem: React.FC<FileTreeNodeProps> = ({
             hideViewedFiles={hideViewedFiles}
             getAnnotationCount={getAnnotationCount}
             stagedFiles={stagedFiles}
+            scrollHighlightIndex={scrollHighlightIndex}
           />
         ))}
       </>
@@ -100,6 +103,7 @@ export const FileTreeNodeItem: React.FC<FileTreeNodeProps> = ({
 
   // File node
   const isActive = node.fileIndex === activeFileIndex;
+  const isScrollActive = !isActive && scrollHighlightIndex != null && node.fileIndex === scrollHighlightIndex;
   const isViewed = viewedFiles.has(node.path);
   const isStaged = stagedFiles?.has(node.path) ?? false;
   const annotationCount = getAnnotationCount(node.path);
@@ -112,7 +116,7 @@ export const FileTreeNodeItem: React.FC<FileTreeNodeProps> = ({
     <button
       onClick={() => onSelectFile(node.fileIndex!)}
       onDoubleClick={() => onDoubleClickFile?.(node.fileIndex!)}
-      className={`file-tree-item w-full text-left group ${isActive ? 'active' : ''} ${annotationCount > 0 ? 'has-annotations' : ''} ${isStaged ? 'staged' : ''}`}
+      className={`file-tree-item w-full text-left group ${isActive ? 'active' : isScrollActive ? 'scroll-active' : ''} ${annotationCount > 0 ? 'has-annotations' : ''} ${isStaged ? 'staged' : ''}`}
       style={{ paddingLeft }}
     >
       <div className="flex items-center gap-1.5 flex-1 min-w-0">

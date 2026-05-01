@@ -289,8 +289,12 @@ diffs-container {
   color: var(--primary);
 }
 
+.file-tree-item.scroll-active {
+  background: oklch(from var(--foreground) l c h / 0.06);
+}
+
 .file-tree-item.has-annotations {
-  background: var(--primary) / 0.08;
+  background: oklch(from var(--primary) l c h / 0.08);
 }
 
 .file-tree-item.has-annotations:hover {

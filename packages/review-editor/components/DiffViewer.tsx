@@ -3,7 +3,7 @@ import { FileDiff, type DiffLineAnnotation } from '@pierre/diffs/react';
 import { getSingularPatch, processFile } from '@pierre/diffs';
 import { CodeAnnotation, CodeAnnotationType, SelectedLineRange, DiffAnnotationMetadata, TokenAnnotationMeta, ConventionalLabel, ConventionalDecoration } from '@plannotator/ui/types';
 import type { DiffTokenEventBaseProps } from '@pierre/diffs';
-import { useTheme } from '@plannotator/ui/components/ThemeProvider';
+import { usePierreTheme } from '../hooks/usePierreTheme';
 import { CommentPopover } from '@plannotator/ui/components/CommentPopover';
 import { storage } from '@plannotator/ui/utils/storage';
 import { detectLanguage } from '../utils/detectLanguage';
@@ -13,6 +13,7 @@ import { OverlayScrollArea } from '@plannotator/ui/components/OverlayScrollArea'
 import { useOverlayViewport } from '@plannotator/ui/hooks/useOverlayViewport';
 import { getEnabledLabels } from './ConventionalLabelPicker';
 import { FileHeader } from './FileHeader';
+import { getLineNumberFromNode, getSideFromNode, getDiffSelection } from '../utils/diffSelection';
 import { InlineAnnotation } from './InlineAnnotation';
 import { InlineAIMarker } from './InlineAIMarker';
 import { AnnotationToolbar } from './AnnotationToolbar';
@@ -202,13 +203,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   onClickAIMarker,
   aiHistoryMessages = [],
 }) => {
-  const { theme, colorTheme, resolvedMode } = useTheme();
+  const pierreTheme = usePierreTheme({ fontFamily, fontSize });
   // containerRef must point at the actual scrolling element (the
   // OverlayScrollbars viewport), not the OverlayScrollArea host. `viewport`
   // is state so effects re-run once the library has mounted the viewport.
   const { ref: containerRef, viewport, onViewportReady } =
     useOverlayViewport<HTMLDivElement>();
   const splitSurfaceRef = useRef<HTMLDivElement>(null);
+  const diffContentRef = useRef<HTMLDivElement>(null);
   const [fileCommentAnchor, setFileCommentAnchor] = useState<HTMLElement | null>(null);
 
   // Resizable split pane — only applies when Pierre renders a two-column grid
@@ -521,6 +523,30 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     );
   }, [toolbar.handleLineSelectionEnd]);
 
+  useEffect(() => {
+    const root = diffContentRef.current;
+    if (!root) return;
+    const handler = () => {
+      requestAnimationFrame(() => {
+        const selection = getDiffSelection(root);
+        if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+        const anchorLine = getLineNumberFromNode(selection.anchorNode);
+        const focusLine = getLineNumberFromNode(selection.focusNode);
+        if (anchorLine == null || focusLine == null) return;
+        if (anchorLine === focusLine) return;
+        const side = getSideFromNode(selection.anchorNode);
+        toolbar.handleLineSelectionEnd({
+          start: Math.min(anchorLine, focusLine),
+          end: Math.max(anchorLine, focusLine),
+          side,
+        });
+        selection.removeAllRanges();
+      });
+    };
+    root.addEventListener('mouseup', handler, true);
+    return () => root.removeEventListener('mouseup', handler, true);
+  }, [toolbar.handleLineSelectionEnd]);
+
   // Token interaction handlers (code area clicks)
   const handleTokenClick = useCallback((props: DiffTokenEventBaseProps, event: MouseEvent) => {
     toolbar.handleTokenClick(props, event);
@@ -533,78 +559,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   const handleTokenLeave = useCallback((props: DiffTokenEventBaseProps) => {
     props.tokenElement.classList.remove('pn-token-hover');
   }, []);
-
-  // Inject resolved colors into @pierre/diffs shadow DOM.
-  // CSS custom properties don't cross the shadow boundary, so we read computed
-  // values and pass them via unsafeCSS. Single state object avoids split renders.
-  const [pierreTheme, setPierreTheme] = useState<{ type: 'dark' | 'light'; css: string }>(() => {
-    // Compute initial theme synchronously to avoid a flash of unstyled dark content
-    const styles = getComputedStyle(document.documentElement);
-    const bg = styles.getPropertyValue('--background').trim();
-    const fg = styles.getPropertyValue('--foreground').trim();
-    if (!bg || !fg) return { type: resolvedMode ?? 'dark', css: '' };
-    return { type: resolvedMode ?? 'dark', css: `
-      :host, [data-diff], [data-file], [data-diffs-header], [data-error-wrapper], [data-virtualizer-buffer] {
-        --diffs-bg: ${bg} !important; --diffs-fg: ${fg} !important;
-        --diffs-dark-bg: ${bg}; --diffs-light-bg: ${bg}; --diffs-dark: ${fg}; --diffs-light: ${fg};
-      }
-      pre, code { background-color: ${bg} !important; }
-    `};
-  });
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      const styles = getComputedStyle(document.documentElement);
-      const bg = styles.getPropertyValue('--background').trim();
-      const fg = styles.getPropertyValue('--foreground').trim();
-      const muted = styles.getPropertyValue('--muted').trim();
-      const primary = styles.getPropertyValue('--primary').trim();
-      if (!bg || !fg) return;
-
-      const fontCSS = fontFamily || fontSize ? `
-          pre, code, [data-line-content], [data-column-number] {
-            ${fontFamily ? `font-family: '${fontFamily}', monospace !important;` : ''}
-            ${fontSize ? `font-size: ${fontSize} !important; line-height: 1.5 !important;` : ''}
-          }` : '';
-
-      setPierreTheme({
-        type: resolvedMode,
-        css: `
-          :host, [data-diff], [data-file], [data-diffs-header], [data-error-wrapper], [data-virtualizer-buffer] {
-            --diffs-bg: ${bg} !important;
-            --diffs-fg: ${fg} !important;
-            --diffs-dark-bg: ${bg};
-            --diffs-light-bg: ${bg};
-            --diffs-dark: ${fg};
-            --diffs-light: ${fg};
-          }
-          pre, code { background-color: ${bg} !important; }
-          [data-file-info] { background-color: ${muted} !important; }
-          [data-column-number] { background-color: ${bg} !important; }
-          [data-diffs-header] [data-title] { display: none !important; }
-          [data-diff-type='split'][data-overflow='scroll'] {
-            grid-template-columns:
-              minmax(0, var(--split-left, 1fr))
-              minmax(0, var(--split-right, 1fr)) !important;
-          }
-          [data-diff-type='split'][data-overflow='scroll'] > [data-code][data-deletions],
-          [data-diff-type='split'][data-overflow='scroll'] > [data-code][data-additions],
-          [data-diff-type='split'][data-overflow='scroll'] > [data-code][data-deletions] [data-content],
-          [data-diff-type='split'][data-overflow='scroll'] > [data-code][data-additions] [data-content] {
-            min-width: 0 !important;
-          }
-          .pn-token-hover {
-            text-decoration: underline;
-            text-decoration-color: ${primary || 'oklch(0.70 0.20 280)'};
-            text-decoration-thickness: 1.5px;
-            text-underline-offset: 2px;
-            cursor: pointer;
-          }
-          ${fontCSS}
-        `,
-      });
-    });
-  }, [resolvedMode, colorTheme, fontFamily, fontSize]);
 
   const splitGridStyle = useMemo(() => {
     if (!isSplitLayout || diffOverflow === 'wrap') return undefined;
@@ -635,7 +589,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         onViewportReady={onViewportReady}
         onMouseMove={toolbar.handleMouseMove}
       >
-        <div className="p-4">
+        <div className="p-4" ref={diffContentRef}>
           <div ref={splitSurfaceRef} className="relative min-w-0" style={splitGridStyle}>
             {isSplitLayout && diffOverflow !== 'wrap' && (
               <div

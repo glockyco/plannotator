@@ -38,6 +38,10 @@ import { ResizeHandle } from '@plannotator/ui/components/ResizeHandle';
 import { DockviewReact, type DockviewReadyEvent, type DockviewApi } from 'dockview-react';
 import { ReviewHeaderMenu } from './components/ReviewHeaderMenu';
 import { ReviewSidebar } from './components/ReviewSidebar';
+import type { ReviewSidebarTab } from './components/ReviewSidebar';
+import { SparklesIcon } from './components/SparklesIcon';
+import { ReviewAgentsIcon } from '@plannotator/ui/components/ReviewAgentsIcon';
+import { useSidebar } from '@plannotator/ui/hooks/useSidebar';
 import { FileTree } from './components/FileTree';
 import { StackedPRLabel } from './components/StackedPRLabel';
 import { PRSelector } from './components/PRSelector';
@@ -62,6 +66,7 @@ import {
   REVIEW_PR_SUMMARY_PANEL_ID,
   REVIEW_PR_COMMENTS_PANEL_ID,
   REVIEW_PR_CHECKS_PANEL_ID,
+  REVIEW_ALL_FILES_PANEL_ID,
 } from './dock/reviewPanelTypes';
 import type { DiffFile } from './types';
 import type { DiffOption, WorktreeInfo, GitContext } from '@plannotator/shared/types';
@@ -130,6 +135,9 @@ const ReviewApp: React.FC = () => {
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [annotations, setAnnotations] = useState<CodeAnnotation[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [isAllFilesActive, setIsAllFilesActive] = useState(false);
+  const [isDiffPanelActive, setIsDiffPanelActive] = useState(false);
+  const [allFilesVisibleFile, setAllFilesVisibleFile] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<SelectedLineRange | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showWorktreeDialog, setShowWorktreeDialog] = useState(false);
@@ -161,7 +169,8 @@ const ReviewApp: React.FC = () => {
     }
   }, [diffFontFamily, diffFontSize]);
 
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const reviewSidebar = useSidebar<ReviewSidebarTab>(true, 'annotations');
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(true);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [copyRawDiffStatus, setCopyRawDiffStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
@@ -404,7 +413,6 @@ const ReviewApp: React.FC = () => {
   const [aiCheckComplete, setAiCheckComplete] = useState(false);
   const [showDiffTypeSetup, setShowDiffTypeSetup] = useState(false);
   const [diffTypeSetupPending, setDiffTypeSetupPending] = useState(false);
-  const [sidebarTabOverride, setSidebarTabOverride] = useState<'ai' | undefined>(undefined);
   const aiChat = useAIChat({
     patch: diffData?.rawPatch ?? '',
     providerId: aiConfig.providerId,
@@ -460,8 +468,7 @@ const ReviewApp: React.FC = () => {
   }, [pendingSelection, files, activeFileIndex, aiChat]);
 
   const handleViewAIResponse = useCallback((questionId?: string) => {
-    setSidebarTabOverride('ai');
-    setIsPanelOpen(true);
+    reviewSidebar.open('ai');
     if (questionId) {
       setScrollToQuestionId(questionId);
       setTimeout(() => setScrollToQuestionId(null), 500);
@@ -498,8 +505,7 @@ const ReviewApp: React.FC = () => {
   const [scrollToQuestionId, setScrollToQuestionId] = useState<string | null>(null);
   const handleClickAIMarker = useCallback((questionId: string) => {
     setScrollToQuestionId(questionId);
-    setSidebarTabOverride('ai');
-    setIsPanelOpen(true);
+    reviewSidebar.open('ai');
     // Clear after a tick so it can re-trigger for the same question
     setTimeout(() => setScrollToQuestionId(null), 500);
   }, []);
@@ -524,7 +530,10 @@ const ReviewApp: React.FC = () => {
 
     // Sync activeFileIndex when user switches between dock tabs
     event.api.onDidActivePanelChange((panel) => {
-      if (!panel || !isReviewDiffPanelId(panel.id)) return;
+      if (!panel) { setIsAllFilesActive(false); setIsDiffPanelActive(false); return; }
+      setIsAllFilesActive(panel.id === REVIEW_ALL_FILES_PANEL_ID);
+      setIsDiffPanelActive(isReviewDiffPanelId(panel.id));
+      if (!isReviewDiffPanelId(panel.id)) return;
       const filePath = getReviewDiffPanelFilePath(panel.params);
       if (!filePath) return;
       const fileIndex = filesRef.current.findIndex(file => file.path === filePath);
@@ -541,7 +550,7 @@ const ReviewApp: React.FC = () => {
         event.api.totalPanels === 1 && event.api.groups.length === 1
           ? event.api.groups[0]?.panels[0]
           : undefined;
-      const hideHeaders = lonePanel?.id === REVIEW_DIFF_PANEL_ID;
+      const hideHeaders = lonePanel?.id === REVIEW_DIFF_PANEL_ID || lonePanel?.id === REVIEW_ALL_FILES_PANEL_ID;
       for (const group of event.api.groups) {
         group.header.hidden = hideHeaders;
       }
@@ -554,13 +563,6 @@ const ReviewApp: React.FC = () => {
     event.api.onDidLayoutChange(updateHeaders);
     updateHeaders();
   }, []);
-
-  // Create the initial diff panel on first load and after diff switches.
-  useEffect(() => {
-    if (!dockApi || !needsInitialDiffPanel.current || files.length === 0) return;
-    openDiffFile(files[0].path);
-  }, [dockApi, files, openDiffFile]);
-
 
   // Open agent job detail as center dock panel
   const handleOpenJobDetail = useCallback((jobId: string) => {
@@ -635,6 +637,24 @@ const ReviewApp: React.FC = () => {
     });
   }, [dockApi]);
 
+  const openAllFilesPanel = useCallback(() => {
+    if (!dockApi) return;
+    const existing = dockApi.getPanel(REVIEW_ALL_FILES_PANEL_ID);
+    if (existing) { existing.api.setActive(); return; }
+    dockApi.addPanel({
+      id: REVIEW_ALL_FILES_PANEL_ID,
+      component: REVIEW_PANEL_TYPES.ALL_FILES,
+      title: 'All files',
+    });
+  }, [dockApi]);
+
+  // Open the all-files panel on first load.
+  useEffect(() => {
+    if (!dockApi || !needsInitialDiffPanel.current || files.length === 0) return;
+    needsInitialDiffPanel.current = false;
+    openAllFilesPanel();
+  }, [dockApi, files, openAllFilesPanel]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -642,6 +662,7 @@ const ReviewApp: React.FC = () => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && !isTypingTarget(e.target)) {
         if (hasSearchableFiles) {
           e.preventDefault();
+          setIsFileTreeOpen(true);
           openSearch();
         }
         return;
@@ -675,12 +696,23 @@ const ReviewApp: React.FC = () => {
         e.preventDefault();
         handleCopyDiff();
       }
+      // Cmd/Ctrl+B to toggle file tree
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setIsFileTreeOpen(prev => !prev);
+      }
+      // Cmd/Ctrl+. to toggle sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === '.' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        if (reviewSidebar.isOpen) reviewSidebar.close();
+        else reviewSidebar.open();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showExportModal, showDestinationMenu, isSearchOpen, searchQuery, searchMatches, isSearchPending, openSearch, stepSearchMatch, clearSearch, closeSearch, hasSearchableFiles]);
+  }, [showExportModal, showDestinationMenu, isSearchOpen, searchQuery, searchMatches, isSearchPending, openSearch, stepSearchMatch, clearSearch, closeSearch, hasSearchableFiles, reviewSidebar.isOpen, reviewSidebar.open, reviewSidebar.close, isFileTreeOpen]);
 
 
   // Load diff content - try API first, fall back to demo
@@ -789,8 +821,8 @@ const ReviewApp: React.FC = () => {
     setPendingSelection(range);
   }, []);
 
-  // Add annotation
-  const handleAddAnnotation = useCallback((
+  const handleAddAnnotationForFile = useCallback((
+    filePath: string,
     type: CodeAnnotationType,
     text?: string,
     suggestedCode?: string,
@@ -799,17 +831,14 @@ const ReviewApp: React.FC = () => {
     decorations?: ConventionalDecoration[],
     tokenMeta?: TokenAnnotationMeta
   ) => {
-    if (!pendingSelection || !files[activeFileIndex]) return;
-
-    // Normalize line range (in case user selected bottom-to-top)
+    if (!pendingSelection) return;
     const lineStart = Math.min(pendingSelection.start, pendingSelection.end);
     const lineEnd = Math.max(pendingSelection.start, pendingSelection.end);
-
     const newAnnotation: CodeAnnotation = {
       id: generateId(),
       type,
       scope: 'line',
-      filePath: files[activeFileIndex].path,
+      filePath,
       lineStart,
       lineEnd,
       side: pendingSelection.side === 'additions' ? 'new' : 'old',
@@ -826,10 +855,22 @@ const ReviewApp: React.FC = () => {
       conventionalLabel,
       decorations,
     };
-
     setAnnotations(prev => [...prev, withPRContext(newAnnotation)]);
     setPendingSelection(null);
-  }, [pendingSelection, files, activeFileIndex, identity, withPRContext]);
+  }, [pendingSelection, identity, withPRContext]);
+
+  const handleAddAnnotation = useCallback((
+    type: CodeAnnotationType,
+    text?: string,
+    suggestedCode?: string,
+    originalCode?: string,
+    conventionalLabel?: ConventionalLabel,
+    decorations?: ConventionalDecoration[],
+    tokenMeta?: TokenAnnotationMeta
+  ) => {
+    if (!files[activeFileIndex]) return;
+    handleAddAnnotationForFile(files[activeFileIndex].path, type, text, suggestedCode, originalCode, conventionalLabel, decorations, tokenMeta);
+  }, [files, activeFileIndex, handleAddAnnotationForFile]);
 
   const handleAddFileComment = useCallback((text: string) => {
     const activeFile = files[activeFileIndex];
@@ -972,6 +1013,25 @@ const ReviewApp: React.FC = () => {
   });
   // Staging is never available in PR review mode — the server rejects it and the UI shouldn't offer it.
   const canStageFiles = canStageRaw && !prMetadata;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || isTypingTarget(e.target)) return;
+      if (!isDiffPanelActive) return;
+      const filePath = files[activeFileIndex]?.path;
+      if (!filePath) return;
+
+      if (e.key === 'v') {
+        e.preventDefault();
+        handleToggleViewed(filePath);
+      } else if (e.key === 'a' && canStageFiles) {
+        e.preventDefault();
+        stageFile(filePath);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [files, activeFileIndex, isDiffPanelActive, handleToggleViewed, canStageFiles, stageFile]);
 
   // Shared function: apply a PR response (used by both initial load and PR switch)
   function applyPRResponse(data: PRSessionUpdate & {
@@ -1170,14 +1230,17 @@ const ReviewApp: React.FC = () => {
       return;
     }
 
-    // Find and switch to the file containing this annotation
-    const fileIndex = files.findIndex(f => f.path === annotation.filePath);
-    if (fileIndex !== -1) {
-      handleFileSwitch(fileIndex);
+    // In all-files mode, just set the selection — the panel's scroll-to-annotation
+    // effect handles expanding and scrolling. In single-file mode, switch to the file.
+    if (!isAllFilesActive) {
+      const fileIndex = files.findIndex(f => f.path === annotation.filePath);
+      if (fileIndex !== -1) {
+        handleFileSwitch(fileIndex);
+      }
     }
 
     setSelectedAnnotationId(id);
-  }, [allAnnotations, files, handleFileSwitch]);
+  }, [allAnnotations, files, isAllFilesActive, handleFileSwitch]);
 
   // Diff context bundled into local-mode feedback headers so the receiving
   // agent knows which diff the annotations are anchored to. Uses committedBase
@@ -1239,6 +1302,7 @@ const ReviewApp: React.FC = () => {
     pendingSelection,
     onLineSelection: handleLineSelection,
     onAddAnnotation: handleAddAnnotation,
+    onAddAnnotationForFile: handleAddAnnotationForFile,
     onAddFileComment: handleAddFileComment,
     onEditAnnotation: handleEditAnnotation,
     onSelectAnnotation: handleSelectAnnotation,
@@ -1271,6 +1335,8 @@ const ReviewApp: React.FC = () => {
     fetchPRContext,
     platformUser,
     openDiffFile,
+    onAllFilesVisibleFileChange: setAllFilesVisibleFile,
+    isAllFilesActive,
     openTourPanel: handleOpenTour,
   }), [
     files, activeFileIndex, diffStyle, diffOverflow, diffIndicators,
@@ -1287,7 +1353,7 @@ const ReviewApp: React.FC = () => {
     handleAskAI, handleViewAIResponse, handleClickAIMarker,
     aiHistoryForSelection, agentJobs.jobs, prMetadata, prContext,
     isPRContextLoading, prContextError, fetchPRContext, platformUser, openDiffFile,
-    handleOpenTour,
+    handleOpenTour, isAllFilesActive, handleAddAnnotationForFile,
   ]);
 
   // Separate context for high-frequency job logs — prevents re-rendering all panels on every SSE event
@@ -1628,7 +1694,22 @@ const ReviewApp: React.FC = () => {
       <div className="h-screen flex flex-col bg-background overflow-hidden">
         {/* Header */}
         <header className="py-1 flex items-center justify-between px-2 md:px-4 border-b border-border/50 bg-card/50 backdrop-blur-xl z-50">
-          <div className="min-w-0 flex items-center gap-2 md:gap-3">
+          <div className="min-w-0 flex items-center gap-2 md:gap-3 -ml-1.5 md:-ml-3">
+            {shouldShowFileTree && (
+              <button
+                onClick={() => setIsFileTreeOpen(prev => !prev)}
+                className={`p-1 rounded-md transition-all focus-visible:outline-none ${
+                  isFileTreeOpen
+                    ? 'text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+                title={isFileTreeOpen ? 'Hide file tree' : 'Show file tree'}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+              </button>
+            )}
             {prMetadata ? (
               <div className="min-w-0 flex items-center gap-2 md:gap-3">
                 {(gitContext || agentCwd) && (
@@ -1886,13 +1967,67 @@ const ReviewApp: React.FC = () => {
 
             <div className="w-px h-5 bg-border/50 mx-1 hidden md:block" />
 
-            {/* Utilities */}
+            {/* Sidebar tab toggles */}
+            <button
+              onClick={() => reviewSidebar.toggleTab('annotations')}
+              className={`relative p-1.5 rounded-md transition-all ${
+                reviewSidebar.isOpen && reviewSidebar.activeTab === 'annotations'
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+              title="Annotations"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+              {totalAnnotationCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground px-0.5">
+                  {totalAnnotationCount > 99 ? '99+' : totalAnnotationCount}
+                </span>
+              )}
+            </button>
+            {aiAvailable && (
+              <button
+                onClick={() => reviewSidebar.toggleTab('ai')}
+                className={`relative p-1.5 rounded-md transition-all ${
+                  reviewSidebar.isOpen && reviewSidebar.activeTab === 'ai'
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+                title="AI Chat"
+              >
+                <SparklesIcon className="w-4 h-4" />
+                {aiChat.messages.length > 0 && !(reviewSidebar.isOpen && reviewSidebar.activeTab === 'ai') && (
+                  <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-primary" />
+                )}
+              </button>
+            )}
+            {agentJobs.capabilities?.available && (
+              <button
+                onClick={() => reviewSidebar.toggleTab('agents')}
+                className={`relative p-1.5 rounded-md transition-all ${
+                  reviewSidebar.isOpen && reviewSidebar.activeTab === 'agents'
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+                title="Review Agents"
+              >
+                <ReviewAgentsIcon className="w-4 h-4" />
+                {agentJobs.jobs.some(j => j.status === 'running' || j.status === 'starting') && !(reviewSidebar.isOpen && reviewSidebar.activeTab === 'agents') && (
+                  <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                )}
+              </button>
+            )}
+
+            <div className="w-px h-5 bg-border/50 mx-1 hidden md:block" />
+
             <ReviewHeaderMenu
-              isPanelOpen={isPanelOpen}
-              annotationCount={totalAnnotationCount}
-              onTogglePanel={() => setIsPanelOpen(!isPanelOpen)}
               onOpenSettings={() => setOpenSettingsMenu(true)}
               onOpenExport={() => setShowExportModal(true)}
+              onToggleFileTree={() => setIsFileTreeOpen(prev => !prev)}
+              onToggleSidebar={() => reviewSidebar.isOpen ? reviewSidebar.close() : reviewSidebar.open()}
+              isFileTreeOpen={isFileTreeOpen}
+              isSidebarOpen={reviewSidebar.isOpen}
               appVersion={appVersion}
             />
           </div>
@@ -1900,12 +2035,14 @@ const ReviewApp: React.FC = () => {
 
         {/* Main content */}
         <div className={`flex-1 flex overflow-hidden ${isResizing ? 'select-none' : ''}`}>
-          {/* Left sidebar stays mounted whenever it provides navigation or context. */}
-          {shouldShowFileTree && (
+          {shouldShowFileTree && isFileTreeOpen && (
             <>
               <FileTree
                 files={files}
                 activeFileIndex={activeFileIndex}
+                onSelectAllFiles={openAllFilesPanel}
+                isAllFilesActive={isAllFilesActive}
+                scrollHighlightIndex={isAllFilesActive && allFilesVisibleFile ? files.findIndex(f => f.path === allFilesVisibleFile) : undefined}
                 onSelectFile={handleFilePreview}
                 onDoubleClickFile={handleFilePinned}
                 annotations={allAnnotations}
@@ -2019,48 +2156,49 @@ const ReviewApp: React.FC = () => {
             )}
           </div>
 
-          {/* Resize Handle */}
-          {isPanelOpen && <ResizeHandle {...panelResize.handleProps} side="right" />}
-
-          {/* Annotations panel */}
-          <ReviewSidebar
-            isOpen={isPanelOpen}
-            onToggle={() => setIsPanelOpen(!isPanelOpen)}
-            annotations={allAnnotations}
-            files={files}
-            selectedAnnotationId={selectedAnnotationId}
-            onSelectAnnotation={handleSelectAnnotation}
-            onDeleteAnnotation={handleDeleteAnnotation}
-            feedbackMarkdown={feedbackMarkdown}
-            width={panelResize.width}
-            editorAnnotations={editorAnnotations}
-            onDeleteEditorAnnotation={deleteEditorAnnotation}
-            prMetadata={prMetadata}
-            aiAvailable={aiAvailable}
-            aiMessages={aiChat.messages}
-            isAICreatingSession={aiChat.isCreatingSession}
-            isAIStreaming={aiChat.isStreaming}
-            onScrollToAILines={handleScrollToAILines}
-            activeTabOverride={sidebarTabOverride}
-            onTabChange={() => setSidebarTabOverride(undefined)}
-            activeFilePath={files[activeFileIndex]?.path}
-            scrollToQuestionId={scrollToQuestionId}
-            onAskGeneral={handleAskGeneral}
-            aiPermissionRequests={aiChat.permissionRequests}
-            onRespondToPermission={aiChat.respondToPermission}
-            aiProviders={aiProviders}
-            aiConfig={aiConfig}
-            onAIConfigChange={handleAIConfigChange}
-            hasAISession={!!aiChat.sessionId}
-            agentJobs={agentJobs.jobs}
-            agentCapabilities={agentJobs.capabilities}
-            onAgentLaunch={agentJobs.launchJob}
-            onAgentKillJob={agentJobs.killJob}
-            onAgentKillAll={agentJobs.killAll}
-            externalAnnotations={externalAnnotations}
-            onOpenJobDetail={handleOpenJobDetail}
-            onOpenPRPanel={handleOpenPRPanel}
-          />
+          {/* Resize Handle + Sidebar */}
+          {reviewSidebar.isOpen && (
+            <>
+              <ResizeHandle {...panelResize.handleProps} side="right" />
+              <ReviewSidebar
+                isOpen
+                onClose={reviewSidebar.close}
+                activeTab={reviewSidebar.activeTab}
+                annotations={allAnnotations}
+                files={files}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelectAnnotation={handleSelectAnnotation}
+                onDeleteAnnotation={handleDeleteAnnotation}
+                feedbackMarkdown={feedbackMarkdown}
+                width={panelResize.width}
+                editorAnnotations={editorAnnotations}
+                onDeleteEditorAnnotation={deleteEditorAnnotation}
+                prMetadata={prMetadata}
+                aiAvailable={aiAvailable}
+                aiMessages={aiChat.messages}
+                isAICreatingSession={aiChat.isCreatingSession}
+                isAIStreaming={aiChat.isStreaming}
+                onScrollToAILines={handleScrollToAILines}
+                activeFilePath={files[activeFileIndex]?.path}
+                scrollToQuestionId={scrollToQuestionId}
+                onAskGeneral={handleAskGeneral}
+                aiPermissionRequests={aiChat.permissionRequests}
+                onRespondToPermission={aiChat.respondToPermission}
+                aiProviders={aiProviders}
+                aiConfig={aiConfig}
+                onAIConfigChange={handleAIConfigChange}
+                hasAISession={!!aiChat.sessionId}
+                agentJobs={agentJobs.jobs}
+                agentCapabilities={agentJobs.capabilities}
+                onAgentLaunch={agentJobs.launchJob}
+                onAgentKillJob={agentJobs.killJob}
+                onAgentKillAll={agentJobs.killAll}
+                externalAnnotations={externalAnnotations}
+                onOpenJobDetail={handleOpenJobDetail}
+                onOpenPRPanel={handleOpenPRPanel}
+              />
+            </>
+          )}
         </div>
 
         {/* Export Modal */}

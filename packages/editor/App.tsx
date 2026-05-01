@@ -318,7 +318,7 @@ const App: React.FC = () => {
     buildUrl: useCallback((codePath: string) => {
       const baseDir = linkedDocHook.filepath
         ? linkedDocHook.filepath.replace(/\/[^/]+$/, '')
-        : imageBaseDir;
+        : imageBaseDir?.includes('/') ? imageBaseDir : undefined;
       return baseDir
         ? `/api/doc?path=${encodeURIComponent(codePath)}&base=${encodeURIComponent(baseDir)}`
         : `/api/doc?path=${encodeURIComponent(codePath)}`;
@@ -437,7 +437,7 @@ const App: React.FC = () => {
       // Pass the current file's directory as base for relative path resolution
       const baseDir = linkedDocHook.filepath
         ? linkedDocHook.filepath.replace(/\/[^/]+$/, '')
-        : imageBaseDir;
+        : imageBaseDir?.includes('/') ? imageBaseDir : undefined;
       if (baseDir) {
         linkedDocHook.open(docPath, (path) =>
           `/api/doc?path=${encodeURIComponent(path)}&base=${encodeURIComponent(baseDir)}`

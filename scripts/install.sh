@@ -313,6 +313,187 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
     echo "  source ${shell_config}"
 fi
 
+# --- Codex CLI / Desktop app support (only if Codex is installed or configured) ---
+if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+    CODEX_DIR="$HOME/.codex"
+    CODEX_CONFIG="$CODEX_DIR/config.toml"
+    CODEX_HOOKS="$CODEX_DIR/hooks.json"
+    PLANNOTATOR_BIN="${INSTALL_DIR}/plannotator"
+    codex_hook_configured=0
+
+    mkdir -p "$CODEX_DIR"
+
+    enable_codex_hooks_config() {
+        if [ ! -f "$CODEX_CONFIG" ]; then
+            cat > "$CODEX_CONFIG" << 'CODEX_CONFIG_EOF'
+[features]
+codex_hooks = true
+CODEX_CONFIG_EOF
+            echo "Created Codex config at ${CODEX_CONFIG}"
+            return 0
+        fi
+
+        if grep -Eq '^[[:space:]]*features[[:space:]]*=' "$CODEX_CONFIG"; then
+            echo ""
+            echo "Codex config uses inline features in ${CODEX_CONFIG}; leaving it unchanged."
+            echo "Add this manually to enable Plannotator plan review:"
+            echo ""
+            echo "  [features]"
+            echo "  codex_hooks = true"
+            return 1
+        fi
+
+        tmp_config="$(mktemp)"
+        if awk '
+            function is_table(line) {
+                return line ~ /^[[:space:]]*\[[^]]+\][[:space:]]*$/
+            }
+            BEGIN {
+                in_features = 0
+                saw_features = 0
+                saw_hook = 0
+            }
+            {
+                if (is_table($0)) {
+                    if (in_features && !saw_hook) {
+                        print "codex_hooks = true"
+                        saw_hook = 1
+                    }
+                    in_features = ($0 ~ /^[[:space:]]*\[features\][[:space:]]*$/)
+                    if (in_features) saw_features = 1
+                }
+
+                if (in_features && $0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=/) {
+                    print "codex_hooks = true"
+                    saw_hook = 1
+                    next
+                }
+
+                print
+            }
+            END {
+                if (saw_features && in_features && !saw_hook) {
+                    print "codex_hooks = true"
+                } else if (!saw_features) {
+                    print ""
+                    print "[features]"
+                    print "codex_hooks = true"
+                }
+            }
+        ' "$CODEX_CONFIG" > "$tmp_config"; then
+            mv "$tmp_config" "$CODEX_CONFIG"
+            echo "Enabled codex_hooks in ${CODEX_CONFIG}"
+            return 0
+        fi
+
+        rm -f "$tmp_config"
+        echo "Could not update ${CODEX_CONFIG}; add codex_hooks manually." >&2
+        return 1
+    }
+
+    if [ ! -f "$CODEX_HOOKS" ]; then
+        cat > "$CODEX_HOOKS" << CODEX_HOOKS_EOF
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${PLANNOTATOR_BIN}",
+            "timeout": 345600
+          }
+        ]
+      }
+    ]
+  }
+}
+CODEX_HOOKS_EOF
+        echo "Created Codex hooks at ${CODEX_HOOKS}"
+        codex_hook_configured=1
+    elif command -v node >/dev/null 2>&1; then
+        if codex_merge_result=$(node - "$CODEX_HOOKS" "$PLANNOTATOR_BIN" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const [hooksPath, command] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+config.hooks ||= {};
+const stopHooks = Array.isArray(config.hooks.Stop) ? config.hooks.Stop : [];
+let updated = false;
+let foundCustomPlannotatorHook = false;
+
+function isManagedPlannotatorCommand(value) {
+  const current = value.trim();
+  if (current === "plannotator" || current === command) return true;
+  return current.startsWith("/") && path.posix.basename(current) === "plannotator";
+}
+
+for (const entry of stopHooks) {
+  const hooks = Array.isArray(entry?.hooks) ? entry.hooks : [];
+  for (const hook of hooks) {
+    if (hook?.type !== "command" || typeof hook.command !== "string") continue;
+
+    if (isManagedPlannotatorCommand(hook.command)) {
+      hook.command = command;
+      hook.timeout = 345600;
+      updated = true;
+    } else if (hook.command.includes("plannotator")) {
+      foundCustomPlannotatorHook = true;
+    }
+  }
+}
+if (!updated && !foundCustomPlannotatorHook) {
+  stopHooks.push({
+    hooks: [
+      {
+        type: "command",
+        command,
+        timeout: 345600,
+      },
+    ],
+  });
+}
+config.hooks.Stop = stopHooks;
+if (updated || !foundCustomPlannotatorHook) {
+  fs.writeFileSync(hooksPath, JSON.stringify(config, null, 2) + "\n");
+}
+process.stdout.write(updated ? "updated" : foundCustomPlannotatorHook ? "custom" : "added");
+NODE
+        ); then
+            case "$codex_merge_result" in
+                custom)
+                    echo "Existing custom Codex Plannotator hook found at ${CODEX_HOOKS}; left it unchanged."
+                    ;;
+                added)
+                    echo "Added Codex hooks at ${CODEX_HOOKS}"
+                    ;;
+                *)
+                    echo "Updated Codex hooks at ${CODEX_HOOKS}"
+                    ;;
+            esac
+            codex_hook_configured=1
+        else
+            echo ""
+            echo "Codex hooks file already exists at ${CODEX_HOOKS}, but it could not be merged automatically."
+            echo "Leaving Codex hook support unchanged. Add or update this Stop hook manually:"
+            echo ""
+            echo "  command: ${PLANNOTATOR_BIN}"
+            echo "  timeout: 345600"
+        fi
+    else
+        echo ""
+        echo "Codex hooks file already exists at ${CODEX_HOOKS}, but node was not found to merge it safely."
+        echo "Leaving Codex hook support unchanged. Add or update this Stop hook manually:"
+        echo ""
+        echo "  command: ${PLANNOTATOR_BIN}"
+        echo "  timeout: 345600"
+    fi
+
+    if [ "$codex_hook_configured" -eq 1 ]; then
+        enable_codex_hooks_config || true
+    fi
+fi
+
 # Validate plugin hooks.json if plugin is already installed
 PLUGIN_HOOKS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/marketplaces/plannotator/apps/hook/hooks/hooks.json"
 if [ -f "$PLUGIN_HOOKS" ]; then

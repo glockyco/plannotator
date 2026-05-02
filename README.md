@@ -217,11 +217,16 @@ See [apps/pi-extension/README.md](apps/pi-extension/README.md) for full usage de
 curl -fsSL https://plannotator.ai/install.sh | bash
 ```
 
+The installer also enables Codex Stop hooks when Codex is installed or `~/.codex` already exists. Restart Codex Desktop
+after installing or changing hooks.
+
 **Windows PowerShell:**
 
 ```powershell
 irm https://plannotator.ai/install.ps1 | iex
 ```
+
+Codex plan review is automatic on macOS, Linux, and WSL. Codex hooks are currently disabled on Windows in the official Codex docs, so the Windows installer does not enable them automatically; the direct `!plannotator` commands still work.
 
 **Then in Codex — feedback flows back into the agent loop automatically:**
 
@@ -238,7 +243,7 @@ $plannotator-last            # Annotate the last agent message
 !plannotator last             # Annotate the last agent message
 ```
 
-Plan mode is not yet supported.
+Plan review uses Codex's experimental `Stop` hook on macOS, Linux, and WSL.
 
 See [apps/codex/README.md](apps/codex/README.md) for details.
 

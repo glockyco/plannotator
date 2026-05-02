@@ -55,6 +55,8 @@ interface FileTreeProps {
   onSelectAllFiles?: () => void;
   isAllFilesActive?: boolean;
   scrollHighlightIndex?: number;
+  /** Absolute repo root for the "Copy full path" context menu item. Null/undefined hides the option (e.g. PR review mode). */
+  repoRoot?: string | null;
 }
 
 export const FileTree: React.FC<FileTreeProps> = ({
@@ -101,6 +103,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onSelectAllFiles,
   isAllFilesActive = false,
   scrollHighlightIndex,
+  repoRoot,
 }) => {
   const isSearchVisible = !!onSearchChange && (isSearchOpen || !!searchQuery.trim());
 
@@ -445,6 +448,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
               hideViewedFiles={hideViewedFiles}
               getAnnotationCount={getAnnotationCount}
               stagedFiles={stagedFiles}
+              repoRoot={repoRoot}
             />
           ))}
           </>

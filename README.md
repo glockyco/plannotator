@@ -226,6 +226,12 @@ irm https://plannotator.ai/install.ps1 | iex
 **Then in Codex — feedback flows back into the agent loop automatically:**
 
 ```
+$plannotator-review          # Code review skill for current changes
+$plannotator-annotate        # Annotate a markdown file, URL, or folder
+$plannotator-last            # Annotate the last agent message
+```
+
+```
 !plannotator review           # Code review for current changes
 !plannotator review <pr-url>  # Review a GitHub pull request
 !plannotator annotate file.md # Annotate a markdown file

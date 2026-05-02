@@ -211,6 +211,14 @@ const App: React.FC = () => {
   // Sidebar (shared TOC + Version Browser)
   const sidebar = useSidebar(getUIPreferences().tocEnabled);
 
+  // Whether the document has any TOC-eligible headings (level <= 3, matching
+  // buildTocHierarchy). Drives the empty-doc auto-close behavior below — must
+  // be declared before the effects that reference it (TDZ in dep arrays).
+  const hasTocEntries = useMemo(
+    () => blocks.some(b => b.type === 'heading' && (b.level ?? 0) <= 3),
+    [blocks]
+  );
+
   const exitWideMode = useCallback((options?: {
     restore?: boolean;
     sidebarTab?: SidebarTab;
@@ -269,9 +277,22 @@ const App: React.FC = () => {
     if (wideModeType !== null) return;
     if (lastAppliedTocEnabledRef.current === uiPrefs.tocEnabled) return;
     lastAppliedTocEnabledRef.current = uiPrefs.tocEnabled;
-    if (uiPrefs.tocEnabled) sidebar.open('toc');
-    else sidebar.close();
-  }, [wideModeType, sidebar.close, sidebar.open, uiPrefs.tocEnabled]);
+    if (uiPrefs.tocEnabled && hasTocEntries) sidebar.open('toc');
+    else if (!uiPrefs.tocEnabled) sidebar.close();
+  }, [wideModeType, sidebar.close, sidebar.open, uiPrefs.tocEnabled, hasTocEntries]);
+
+  // Auto-close the sidebar when blocks parse with no TOC entries. Fires
+  // only on blocks/hasTocEntries change (not on sidebar state) so a user
+  // who manually re-opens the empty sidebar is left alone — until the
+  // document changes again (e.g. picking a new file in annotate-folder).
+  useEffect(() => {
+    if (blocks.length === 0) return;
+    if (hasTocEntries) return;
+    if (sidebar.activeTab === 'toc' && sidebar.isOpen) {
+      sidebar.close();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, hasTocEntries]);
 
   // Clear diff view when switching away from versions tab
   useEffect(() => {

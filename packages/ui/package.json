@@ -9,6 +9,7 @@
     "./components/plan-diff/*": "./components/plan-diff/*.tsx",
     "./utils/*": "./utils/*.ts",
     "./hooks/*": "./hooks/*.ts",
+    "./shortcuts": "./shortcuts/index.ts",
     "./config": "./config/index.ts",
     "./types": "./types.ts",
     "./theme": "./theme.css"

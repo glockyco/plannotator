@@ -691,11 +691,6 @@ const ReviewApp: React.FC = () => {
           clearSearch();
         }
       }
-      // Cmd/Ctrl+Shift+C to copy diff
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
-        e.preventDefault();
-        handleCopyDiff();
-      }
       // Cmd/Ctrl+B to toggle file tree
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b' && !isTypingTarget(e.target)) {
         e.preventDefault();

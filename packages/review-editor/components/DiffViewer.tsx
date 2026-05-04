@@ -7,18 +7,14 @@ import { usePierreTheme } from '../hooks/usePierreTheme';
 import { CommentPopover } from '@plannotator/ui/components/CommentPopover';
 import { storage } from '@plannotator/ui/utils/storage';
 import { detectLanguage } from '../utils/detectLanguage';
-import { useAnnotationToolbar } from '../hooks/useAnnotationToolbar';
-import { useConfigValue } from '@plannotator/ui/config';
+import { ToolbarHost, type ToolbarHostHandle } from './ToolbarHost';
 import { OverlayScrollArea } from '@plannotator/ui/components/OverlayScrollArea';
 import { useOverlayViewport } from '@plannotator/ui/hooks/useOverlayViewport';
-import { getEnabledLabels } from './ConventionalLabelPicker';
 import { FileHeader } from './FileHeader';
 import { getLineNumberFromNode, getSideFromNode, getDiffSelection } from '../utils/diffSelection';
 import { InlineAnnotation } from './InlineAnnotation';
 import { InlineAIMarker } from './InlineAIMarker';
-import { AnnotationToolbar } from './AnnotationToolbar';
 import type { AIChatEntry } from '../hooks/useAIChat';
-import { SuggestionModal } from './SuggestionModal';
 import { type ReviewSearchMatch } from '../utils/reviewSearch';
 import {
   applySearchHighlights,
@@ -264,10 +260,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     storage.setItem('review-split-ratio', '0.5');
   }, []);
 
-  const toolbar = useAnnotationToolbar({ patch, filePath, isFocused, onLineSelection, onAddAnnotation, onEditAnnotation });
-  const conventionalCommentsEnabled = useConfigValue('conventionalComments');
-  const conventionalLabelsJson = useConfigValue('conventionalLabels');
-  const enabledLabels = useMemo(() => getEnabledLabels(conventionalLabelsJson), [conventionalLabelsJson]);
+  const toolbarHostRef = useRef<ToolbarHostHandle>(null);
 
   // Parse patch into FileDiffMetadata for @pierre/diffs FileDiff component
   const fileDiff = useMemo(() => getSingularPatch(patch), [patch]);
@@ -468,8 +461,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   // Handle edit: find annotation and start editing in toolbar
   const handleEdit = useCallback((id: string) => {
     const ann = annotations.find(a => a.id === id);
-    if (ann) toolbar.startEdit(ann);
-  }, [annotations, toolbar.startEdit]);
+    if (ann) toolbarHostRef.current?.startEdit(ann);
+  }, [annotations]);
 
   // Render annotation or AI marker in diff
   const renderAnnotation = useCallback((annotation: { side: string; lineNumber: number; metadata?: DiffAnnotationMetadata }) => {
@@ -511,7 +504,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           e.stopPropagation();
           const line = getHoveredLine();
           if (!line) return;
-          toolbar.handleLineSelectionEnd({
+          toolbarHostRef.current?.handleLineSelectionEnd({
             start: line.lineNumber,
             end: line.lineNumber,
             side: line.side,
@@ -521,7 +514,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         +
       </button>
     );
-  }, [toolbar.handleLineSelectionEnd]);
+  }, []);
 
   useEffect(() => {
     const root = diffContentRef.current;
@@ -535,7 +528,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         if (anchorLine == null || focusLine == null) return;
         if (anchorLine === focusLine) return;
         const side = getSideFromNode(selection.anchorNode);
-        toolbar.handleLineSelectionEnd({
+        toolbarHostRef.current?.handleLineSelectionEnd({
           start: Math.min(anchorLine, focusLine),
           end: Math.max(anchorLine, focusLine),
           side,
@@ -545,12 +538,16 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     };
     root.addEventListener('mouseup', handler, true);
     return () => root.removeEventListener('mouseup', handler, true);
-  }, [toolbar.handleLineSelectionEnd]);
+  }, []);
+
+  const handlePierreLineSelectionEnd = useCallback((range: SelectedLineRange | null) => {
+    toolbarHostRef.current?.handleLineSelectionEnd(range);
+  }, []);
 
   // Token interaction handlers (code area clicks)
   const handleTokenClick = useCallback((props: DiffTokenEventBaseProps, event: MouseEvent) => {
-    toolbar.handleTokenClick(props, event);
-  }, [toolbar.handleTokenClick]);
+    toolbarHostRef.current?.handleTokenClick(props, event);
+  }, []);
 
   const handleTokenEnter = useCallback((props: DiffTokenEventBaseProps) => {
     props.tokenElement.classList.add('pn-token-hover');
@@ -587,7 +584,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         className={`flex-1 min-h-0 relative ${isDraggingSplit ? 'select-none' : ''}`}
         overflowX="scroll"
         onViewportReady={onViewportReady}
-        onMouseMove={toolbar.handleMouseMove}
       >
         <div className="p-4" ref={diffContentRef}>
           <div ref={splitSurfaceRef} className="relative min-w-0" style={splitGridStyle}>
@@ -613,7 +609,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               disableBackground={disableBackground}
               mergedAnnotations={mergedAnnotations}
               pendingSelection={pendingSelection}
-              onLineSelectionEnd={toolbar.handleLineSelectionEnd}
+              onLineSelectionEnd={handlePierreLineSelectionEnd}
               renderAnnotation={renderAnnotation}
               renderHoverUtility={renderHoverUtility}
               onTokenClick={handleTokenClick}
@@ -623,48 +619,20 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           </div>
         </div>
 
-      {toolbar.toolbarState && !toolbar.showCodeModal && (
-        <AnnotationToolbar
-          toolbarState={toolbar.toolbarState}
-          toolbarRef={toolbar.toolbarRef}
-          commentText={toolbar.commentText}
-          setCommentText={toolbar.setCommentText}
-          suggestedCode={toolbar.suggestedCode}
-          setSuggestedCode={toolbar.setSuggestedCode}
-          showSuggestedCode={toolbar.showSuggestedCode}
-          setShowSuggestedCode={toolbar.setShowSuggestedCode}
-          selectedOriginalCode={toolbar.selectedOriginalCode}
-          setShowCodeModal={toolbar.setShowCodeModal}
-          isEditing={!!toolbar.editingAnnotationId}
-          onSubmit={toolbar.handleSubmitAnnotation}
-          onDismiss={toolbar.handleDismiss}
-          onCancel={toolbar.handleCancel}
-          conventionalCommentsEnabled={conventionalCommentsEnabled}
-          conventionalLabel={toolbar.conventionalLabel}
-          onConventionalLabelChange={toolbar.setConventionalLabel}
-          decorations={toolbar.decorations}
-          onDecorationsChange={toolbar.setDecorations}
-          enabledLabels={enabledLabels}
-          aiAvailable={aiAvailable}
-          onAskAI={onAskAI}
-          isAILoading={isAILoading}
-          onViewAIResponse={onViewAIResponse}
-          aiHistoryMessages={aiHistoryMessages}
-        />
-      )}
-
-      {toolbar.showCodeModal && (
-        <SuggestionModal
-          filePath={filePath}
-          toolbarState={toolbar.toolbarState}
-          selectedOriginalCode={toolbar.selectedOriginalCode}
-          suggestedCode={toolbar.suggestedCode}
-          setSuggestedCode={toolbar.setSuggestedCode}
-          modalLayout={toolbar.modalLayout}
-          setModalLayout={toolbar.setModalLayout}
-          onClose={() => toolbar.setShowCodeModal(false)}
-        />
-      )}
+      <ToolbarHost
+        ref={toolbarHostRef}
+        patch={patch}
+        filePath={filePath}
+        isFocused={isFocused}
+        onLineSelection={onLineSelection}
+        onAddAnnotation={onAddAnnotation}
+        onEditAnnotation={onEditAnnotation}
+        aiAvailable={aiAvailable}
+        onAskAI={onAskAI}
+        isAILoading={isAILoading}
+        onViewAIResponse={onViewAIResponse}
+        aiHistoryMessages={aiHistoryMessages}
+      />
 
       {fileCommentAnchor && (
         <CommentPopover

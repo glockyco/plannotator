@@ -4,12 +4,8 @@ import { getSingularPatch } from '@pierre/diffs';
 import { CodeAnnotation, CodeAnnotationType, SelectedLineRange, DiffAnnotationMetadata, TokenAnnotationMeta, ConventionalLabel, ConventionalDecoration } from '@plannotator/ui/types';
 import { usePierreTheme } from '../hooks/usePierreTheme';
 import { LazyFileDiff } from './LazyFileDiff';
-import { useAnnotationToolbar } from '../hooks/useAnnotationToolbar';
-import { useConfigValue } from '@plannotator/ui/config';
-import { getEnabledLabels } from './ConventionalLabelPicker';
+import { ToolbarHost, type ToolbarHostHandle } from './ToolbarHost';
 import { InlineAnnotation } from './InlineAnnotation';
-import { AnnotationToolbar } from './AnnotationToolbar';
-import { SuggestionModal } from './SuggestionModal';
 import { FileHeader } from './FileHeader';
 import { CommentPopover } from '@plannotator/ui/components/CommentPopover';
 import { detectLanguage } from '../utils/detectLanguage';
@@ -97,9 +93,6 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const conventionalCommentsEnabled = useConfigValue('conventionalComments');
-  const conventionalLabelsJson = useConfigValue('conventionalLabels');
-  const enabledLabels = useMemo(() => getEnabledLabels(conventionalLabelsJson), [conventionalLabelsJson]);
 
   const activePatch = useMemo(
     () => files.find(f => f.path === activeFilePath)?.patch ?? '',
@@ -119,27 +112,20 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
     onAddAnnotation(activeFilePath, type, text, suggestedCode, originalCode, conventionalLabel, decorations, tokenMeta);
   }, [activeFilePath, onAddAnnotation]);
 
-  const toolbar = useAnnotationToolbar({
-    patch: activePatch,
-    filePath: activeFilePath ?? '',
-    isFocused: true,
-    onLineSelection,
-    onAddAnnotation: handleAddAnnotation,
-    onEditAnnotation,
-  });
+  const toolbarHostRef = useRef<ToolbarHostHandle>(null);
 
   useEffect(() => {
     if (pendingToolbarRange.current && activePatch) {
-      toolbar.handleLineSelectionEnd(pendingToolbarRange.current);
+      toolbarHostRef.current?.handleLineSelectionEnd(pendingToolbarRange.current);
       pendingToolbarRange.current = null;
     }
-  }, [activePatch, toolbar.handleLineSelectionEnd]);
+  }, [activePatch]);
 
   const handleEdit = useCallback((id: string) => {
     const ann = annotations.find(a => a.id === id);
     if (!ann) return;
-    toolbar.startEdit(ann);
-  }, [annotations, toolbar.startEdit]);
+    toolbarHostRef.current?.startEdit(ann);
+  }, [annotations]);
 
   const visualOrder = useMemo(() => {
     const tree = buildFileTree(files);
@@ -338,7 +324,7 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
           }
           setActiveFilePath(closestFile);
         }
-        toolbar.handleLineSelectionEnd({
+        toolbarHostRef.current?.handleLineSelectionEnd({
           start: Math.min(anchorLine, focusLine),
           end: Math.max(anchorLine, focusLine),
           side,
@@ -348,7 +334,7 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
     };
     root.addEventListener('mouseup', handler, true);
     return () => root.removeEventListener('mouseup', handler, true);
-  }, [toolbar.handleLineSelectionEnd, sortedFiles, activeFilePath]);
+  }, [sortedFiles, activeFilePath]);
 
   // Scroll to selected annotation — auto-expand collapsed file
   useEffect(() => {
@@ -368,7 +354,7 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
   }, [selectedAnnotationId, annotations]);
 
   return (
-    <div className="h-full overflow-auto" ref={scrollRef} onMouseMove={toolbar.handleMouseMove}>
+    <div className="h-full overflow-auto" ref={scrollRef}>
       {sortedFiles.map(file => {
         const isCollapsed = collapsedFiles.has(file.path);
         const fileAnnotations = annotations
@@ -454,7 +440,7 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
                   onLineSelectionEnd: (range: SelectedLineRange | null) => {
                     if (range) {
                       if (activeFilePath === file.path) {
-                        toolbar.handleLineSelectionEnd(range);
+                        toolbarHostRef.current?.handleLineSelectionEnd(range);
                       } else {
                         pendingToolbarRange.current = range;
                         setActiveFilePath(file.path);
@@ -486,7 +472,7 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
                       if (!line) return;
                       const range = { start: line.lineNumber, end: line.lineNumber, side: line.side };
                       if (activeFilePath === file.path) {
-                        toolbar.handleLineSelectionEnd(range);
+                        toolbarHostRef.current?.handleLineSelectionEnd(range);
                       } else {
                         pendingToolbarRange.current = range;
                         setActiveFilePath(file.path);
@@ -502,43 +488,15 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
         );
       })}
 
-      {toolbar.toolbarState && !toolbar.showCodeModal && (
-        <AnnotationToolbar
-          toolbarState={toolbar.toolbarState}
-          toolbarRef={toolbar.toolbarRef}
-          commentText={toolbar.commentText}
-          setCommentText={toolbar.setCommentText}
-          suggestedCode={toolbar.suggestedCode}
-          setSuggestedCode={toolbar.setSuggestedCode}
-          showSuggestedCode={toolbar.showSuggestedCode}
-          setShowSuggestedCode={toolbar.setShowSuggestedCode}
-          selectedOriginalCode={toolbar.selectedOriginalCode}
-          setShowCodeModal={toolbar.setShowCodeModal}
-          isEditing={!!toolbar.editingAnnotationId}
-          onSubmit={toolbar.handleSubmitAnnotation}
-          onDismiss={toolbar.handleDismiss}
-          onCancel={toolbar.handleCancel}
-          conventionalCommentsEnabled={conventionalCommentsEnabled}
-          conventionalLabel={toolbar.conventionalLabel}
-          onConventionalLabelChange={toolbar.setConventionalLabel}
-          decorations={toolbar.decorations}
-          onDecorationsChange={toolbar.setDecorations}
-          enabledLabels={enabledLabels}
-        />
-      )}
-
-      {toolbar.showCodeModal && (
-        <SuggestionModal
-          filePath={activeFilePath ?? ''}
-          toolbarState={toolbar.toolbarState}
-          selectedOriginalCode={toolbar.selectedOriginalCode}
-          suggestedCode={toolbar.suggestedCode}
-          setSuggestedCode={toolbar.setSuggestedCode}
-          modalLayout={toolbar.modalLayout}
-          setModalLayout={toolbar.setModalLayout}
-          onClose={() => toolbar.setShowCodeModal(false)}
-        />
-      )}
+      <ToolbarHost
+        ref={toolbarHostRef}
+        patch={activePatch}
+        filePath={activeFilePath ?? ''}
+        isFocused={true}
+        onLineSelection={onLineSelection}
+        onAddAnnotation={handleAddAnnotation}
+        onEditAnnotation={onEditAnnotation}
+      />
 
       {fileCommentAnchor && onAddFileComment && (
         <CommentPopover

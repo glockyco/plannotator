@@ -314,7 +314,17 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
 fi
 
 # --- Codex CLI / Desktop app support (only if Codex is installed or configured) ---
-if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+codex_home_has_user_config() {
+    [ -d "$HOME/.codex" ] || return 1
+    [ -n "$(find "$HOME/.codex" -mindepth 1 -maxdepth 1 ! -name skills ! -name .DS_Store -print -quit 2>/dev/null)" ]
+}
+
+codex_available=0
+if command -v codex >/dev/null 2>&1 || codex_home_has_user_config; then
+    codex_available=1
+fi
+
+if [ "$codex_available" -eq 1 ]; then
     CODEX_DIR="$HOME/.codex"
     CODEX_CONFIG="$CODEX_DIR/config.toml"
     CODEX_HOOKS="$CODEX_DIR/hooks.json"
@@ -624,11 +634,51 @@ COMMAND_EOF
 
 echo "Installed /plannotator-last command to ${OPENCODE_COMMANDS_DIR}/plannotator-last.md"
 
+# Remove legacy Codex-oriented skills from the older shared agent scope.
+LEGACY_AGENTS_SKILLS_DIR="$HOME/.agents/skills"
+legacy_skills_removed=0
+if [ -d "$LEGACY_AGENTS_SKILLS_DIR" ]; then
+    for skill in plannotator-review plannotator-annotate plannotator-last; do
+        if [ -d "$LEGACY_AGENTS_SKILLS_DIR/$skill" ]; then
+            rm -rf "$LEGACY_AGENTS_SKILLS_DIR/$skill"
+            legacy_skills_removed=1
+        fi
+    done
+fi
+if [ "$legacy_skills_removed" -eq 1 ]; then
+    echo "Removed legacy Plannotator skills from ${LEGACY_AGENTS_SKILLS_DIR}"
+fi
+
+# Remove Plannotator skills that belong in the shared agent scope from Codex.
+STALE_CODEX_SKILLS_DIR="$HOME/.codex/skills"
+stale_codex_skills_removed=0
+if [ -d "$STALE_CODEX_SKILLS_DIR" ]; then
+    for skill in plannotator-compound plannotator-setup-goal; do
+        if [ -d "$STALE_CODEX_SKILLS_DIR/$skill" ]; then
+            rm -rf "$STALE_CODEX_SKILLS_DIR/$skill"
+            stale_codex_skills_removed=1
+        fi
+    done
+fi
+if [ "$stale_codex_skills_removed" -eq 1 ]; then
+    echo "Removed shared-agent Plannotator skills from ${STALE_CODEX_SKILLS_DIR}"
+fi
+
 # Install skills (requires git)
 if command -v git &>/dev/null; then
     CLAUDE_SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
+    CODEX_SKILLS_DIR="$HOME/.codex/skills"
     AGENTS_SKILLS_DIR="$HOME/.agents/skills"
     skills_tmp=$(mktemp -d)
+
+    copy_skill_if_present() {
+        local source_dir="$1"
+        local target_dir="$2"
+
+        if [ -d "$source_dir" ]; then
+            cp -r "$source_dir" "$target_dir/"
+        fi
+    }
 
     # Wrap the cd-bearing block in a subshell so any `cd` is scoped to
     # the subshell and can't leave the parent script with a dangling CWD.
@@ -642,18 +692,30 @@ if command -v git &>/dev/null; then
     # equivalent — the parent shell's CWD is inherited in, and any
     # cd inside the subshell disappears when the subshell exits.
     if (
-        cd "$skills_tmp" &&
+        set -e
+        cd "$skills_tmp"
         git clone --depth 1 --filter=blob:none --sparse \
-            "https://github.com/${REPO}.git" --branch "$latest_tag" repo 2>/dev/null &&
-        cd repo &&
-        git sparse-checkout set apps/skills 2>/dev/null &&
-        [ -d "apps/skills" ] &&
-        [ "$(ls -A apps/skills 2>/dev/null)" ] &&
-        mkdir -p "$CLAUDE_SKILLS_DIR" "$AGENTS_SKILLS_DIR" &&
-        cp -r apps/skills/* "$CLAUDE_SKILLS_DIR/" &&
-        cp -r apps/skills/* "$AGENTS_SKILLS_DIR/"
+            "https://github.com/${REPO}.git" --branch "$latest_tag" repo 2>/dev/null
+        cd repo
+        git sparse-checkout set apps/skills 2>/dev/null
+        [ -d "apps/skills" ]
+        [ "$(ls -A apps/skills 2>/dev/null)" ]
+        mkdir -p "$CLAUDE_SKILLS_DIR" "$AGENTS_SKILLS_DIR"
+        cp -r apps/skills/* "$CLAUDE_SKILLS_DIR/"
+        copy_skill_if_present apps/skills/plannotator-compound "$AGENTS_SKILLS_DIR"
+        copy_skill_if_present apps/skills/plannotator-setup-goal "$AGENTS_SKILLS_DIR"
+        if [ "$codex_available" -eq 1 ]; then
+            mkdir -p "$CODEX_SKILLS_DIR"
+            copy_skill_if_present apps/skills/plannotator-review "$CODEX_SKILLS_DIR"
+            copy_skill_if_present apps/skills/plannotator-annotate "$CODEX_SKILLS_DIR"
+            copy_skill_if_present apps/skills/plannotator-last "$CODEX_SKILLS_DIR"
+        fi
     ); then
-        echo "Installed skills to ${CLAUDE_SKILLS_DIR}/ and ${AGENTS_SKILLS_DIR}/"
+        if [ "$codex_available" -eq 1 ]; then
+            echo "Installed skills to ${CLAUDE_SKILLS_DIR}/, Codex command skills to ${CODEX_SKILLS_DIR}/, and shared agent skills to ${AGENTS_SKILLS_DIR}/"
+        else
+            echo "Installed skills to ${CLAUDE_SKILLS_DIR}/ and shared agent skills to ${AGENTS_SKILLS_DIR}/"
+        fi
     else
         echo "Skipping skills install (git sparse-checkout failed or apps/skills empty)"
     fi

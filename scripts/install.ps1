@@ -270,7 +270,15 @@ if (Test-Path $pluginHooks) {
 # $env:USERPROFILE\.codex automatically from the Windows installer until that
 # path is verified end-to-end.
 $codexDir = "$env:USERPROFILE\.codex"
-if ((Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path $codexDir)) {
+$codexHomeHasUserConfig = $false
+if (Test-Path $codexDir) {
+    $codexHomeHasUserConfig = [bool](Get-ChildItem -Force $codexDir -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "skills" -and $_.Name -ne ".DS_Store" } |
+        Select-Object -First 1)
+}
+$codexAvailable = [bool](Get-Command codex -ErrorAction SilentlyContinue) -or $codexHomeHasUserConfig
+
+if ($codexAvailable) {
     $codexExePath = "$installDir\plannotator.exe"
     Write-Host ""
     Write-Host "Codex detected."
@@ -394,12 +402,52 @@ description: Annotate the last assistant message
 
 Write-Host "Installed /plannotator-last command to $opencodeCommandsDir\plannotator-last.md"
 
+# Remove legacy Codex-oriented skills from the older shared agent scope.
+$legacyAgentsSkillsDir = "$env:USERPROFILE\.agents\skills"
+$legacySkillsRemoved = $false
+foreach ($skill in @("plannotator-review", "plannotator-annotate", "plannotator-last")) {
+    $legacySkillPath = Join-Path $legacyAgentsSkillsDir $skill
+    if (Test-Path $legacySkillPath) {
+        Remove-Item -Recurse -Force $legacySkillPath -ErrorAction SilentlyContinue
+        $legacySkillsRemoved = $true
+    }
+}
+if ($legacySkillsRemoved) {
+    Write-Host "Removed legacy Plannotator skills from $legacyAgentsSkillsDir"
+}
+
+# Remove Plannotator skills that belong in the shared agent scope from Codex.
+$staleCodexSkillsDir = "$env:USERPROFILE\.codex\skills"
+$staleCodexSkillsRemoved = $false
+foreach ($skill in @("plannotator-compound", "plannotator-setup-goal")) {
+    $staleSkillPath = Join-Path $staleCodexSkillsDir $skill
+    if (Test-Path $staleSkillPath) {
+        Remove-Item -Recurse -Force $staleSkillPath -ErrorAction SilentlyContinue
+        $staleCodexSkillsRemoved = $true
+    }
+}
+if ($staleCodexSkillsRemoved) {
+    Write-Host "Removed shared-agent Plannotator skills from $staleCodexSkillsDir"
+}
+
 # Install skills (requires git)
 if (Get-Command git -ErrorAction SilentlyContinue) {
     $claudeSkillsDir = if ($env:CLAUDE_CONFIG_DIR) { "$env:CLAUDE_CONFIG_DIR\skills" } else { "$env:USERPROFILE\.claude\skills" }
+    $codexSkillsDir = "$env:USERPROFILE\.codex\skills"
     $agentsSkillsDir = "$env:USERPROFILE\.agents\skills"
     $skillsTmp = Join-Path ([System.IO.Path]::GetTempPath()) "plannotator-skills-$(Get-Random)"
     New-Item -ItemType Directory -Force -Path $skillsTmp | Out-Null
+
+    function Copy-SkillIfPresent {
+        param(
+            [string]$SourceDir,
+            [string]$TargetDir
+        )
+
+        if (Test-Path $SourceDir) {
+            Copy-Item -Recurse -Force $SourceDir $TargetDir
+        }
+    }
 
     try {
         git clone --depth 1 --filter=blob:none --sparse "https://github.com/$repo.git" --branch $latestTag "$skillsTmp\repo" 2>$null
@@ -423,8 +471,17 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
                         New-Item -ItemType Directory -Force -Path $claudeSkillsDir | Out-Null
                         New-Item -ItemType Directory -Force -Path $agentsSkillsDir | Out-Null
                         Copy-Item -Recurse -Force "apps\skills\*" $claudeSkillsDir
-                        Copy-Item -Recurse -Force "apps\skills\*" $agentsSkillsDir
-                        Write-Host "Installed skills to $claudeSkillsDir\ and $agentsSkillsDir\"
+                        Copy-SkillIfPresent "apps\skills\plannotator-compound" $agentsSkillsDir
+                        Copy-SkillIfPresent "apps\skills\plannotator-setup-goal" $agentsSkillsDir
+                        if ($codexAvailable) {
+                            New-Item -ItemType Directory -Force -Path $codexSkillsDir | Out-Null
+                            Copy-SkillIfPresent "apps\skills\plannotator-review" $codexSkillsDir
+                            Copy-SkillIfPresent "apps\skills\plannotator-annotate" $codexSkillsDir
+                            Copy-SkillIfPresent "apps\skills\plannotator-last" $codexSkillsDir
+                            Write-Host "Installed skills to $claudeSkillsDir\, Codex command skills to $codexSkillsDir\, and shared agent skills to $agentsSkillsDir\"
+                        } else {
+                            Write-Host "Installed skills to $claudeSkillsDir\ and shared agent skills to $agentsSkillsDir\"
+                        }
                     }
                 }
             } finally {

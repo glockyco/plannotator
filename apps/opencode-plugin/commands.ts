@@ -18,7 +18,7 @@ import {
   startAnnotateServer,
   handleAnnotateServerReady,
 } from "@plannotator/server/annotate";
-import { getGitContext, runGitDiffWithContext } from "@plannotator/server/git";
+import { type DiffType, prepareLocalReviewDiff } from "@plannotator/server/vcs";
 import { parsePRUrl, checkPRAuth, fetchPR, getCliName, getMRLabel, getMRNumberLabel, getDisplayRepo } from "@plannotator/server/pr";
 import { loadConfig, resolveDefaultDiffType, resolveUseJina } from "@plannotator/shared/config";
 import {
@@ -30,6 +30,7 @@ import { resolveMarkdownFile, resolveUserPath, hasMarkdownFiles } from "@plannot
 import { FILE_BROWSER_EXCLUDED } from "@plannotator/shared/reference-common";
 import { htmlToMarkdown } from "@plannotator/shared/html-to-markdown";
 import { parseAnnotateArgs } from "@plannotator/shared/annotate-args";
+import { parseReviewArgs } from "@plannotator/shared/review-args";
 import { urlToMarkdown, isConvertedSource } from "@plannotator/shared/url-to-markdown";
 import { statSync } from "fs";
 import path from "path";
@@ -52,14 +53,15 @@ export async function handleReviewCommand(
   const { client, reviewHtmlContent, getSharingEnabled, getShareBaseUrl, directory } = deps;
 
   // @ts-ignore - Event properties contain arguments
-  const urlArg: string = event.properties?.arguments || "";
-  const isPRMode = urlArg?.startsWith("http://") || urlArg?.startsWith("https://");
+  const reviewArgs = parseReviewArgs(event.properties?.arguments || "");
+  const urlArg = reviewArgs.prUrl;
+  const isPRMode = urlArg !== undefined;
 
   let rawPatch: string;
   let gitRef: string;
   let diffError: string | undefined;
-  let userDiffType: import("@plannotator/shared/config").DefaultDiffType | undefined;
-  let gitContext: Awaited<ReturnType<typeof getGitContext>> | undefined;
+  let userDiffType: DiffType | undefined;
+  let gitContext: Awaited<ReturnType<typeof prepareLocalReviewDiff>>["gitContext"] | undefined;
   let prMetadata: Awaited<ReturnType<typeof fetchPR>>["metadata"] | undefined;
 
   if (isPRMode) {
@@ -91,14 +93,17 @@ export async function handleReviewCommand(
   } else {
     client.app.log({ level: "info", message: "Opening code review UI..." });
 
-    gitContext = await getGitContext(directory);
     const config = loadConfig();
-    userDiffType = resolveDefaultDiffType(config);
-    const diffResult = await runGitDiffWithContext(userDiffType, gitContext, {
+    const diffResult = await prepareLocalReviewDiff({
+      cwd: directory,
+      vcsType: reviewArgs.vcsType,
+      configuredDiffType: resolveDefaultDiffType(config),
       hideWhitespace: config.diffOptions?.hideWhitespace ?? false,
     });
-    rawPatch = diffResult.patch;
-    gitRef = diffResult.label;
+    gitContext = diffResult.gitContext;
+    userDiffType = diffResult.diffType;
+    rawPatch = diffResult.rawPatch;
+    gitRef = diffResult.gitRef;
     diffError = diffResult.error;
   }
 

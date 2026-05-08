@@ -7,11 +7,17 @@
 
 import { resolve as resolvePath } from "node:path";
 
+export const JJ_TRUNK_REVSET = "trunk()";
+
 export type DiffType =
   | "uncommitted"
   | "staged"
   | "unstaged"
   | "last-commit"
+  | "jj-current"
+  | "jj-last"
+  | "jj-line"
+  | "jj-all"
   | "branch"
   | "merge-base"
   | "all"
@@ -35,14 +41,36 @@ export interface AvailableBranches {
   remote: string[];
 }
 
+export interface CompareTargetPickerCopy {
+  rowLabel: string;
+  triggerLabel: string;
+  triggerTitlePrefix: string;
+  searchPlaceholder: string;
+  emptyText: string;
+  localGroupLabel: string;
+  remoteGroupLabel: string;
+}
+
+export interface CompareTargetConfig {
+  diffTypes: string[];
+  fallback: string;
+  picker: CompareTargetPickerCopy;
+}
+
+export interface RepositoryContext {
+  displayFallback?: string;
+}
+
 export interface GitContext {
   currentBranch: string;
   defaultBranch: string;
   diffOptions: DiffOption[];
   worktrees: WorktreeInfo[];
   availableBranches: AvailableBranches;
+  compareTarget?: CompareTargetConfig;
+  repository?: RepositoryContext;
   cwd?: string;
-  vcsType?: "git" | "p4";
+  vcsType?: "git" | "jj" | "p4";
 }
 
 export interface DiffResult {
@@ -67,6 +95,36 @@ export interface ReviewGitRuntime {
 
 export interface GitDiffOptions {
   hideWhitespace?: boolean;
+}
+
+export function parseRemoteBookmark(target: string): { name: string; remote: string } | null {
+  const at = target.lastIndexOf("@");
+  if (at <= 0 || at === target.length - 1) return null;
+  return { name: target.slice(0, at), remote: target.slice(at + 1) };
+}
+
+export function jjCompareTargetRevset(target: string): string {
+  const remoteBookmark = parseRemoteBookmark(target);
+  if (remoteBookmark) {
+    return `remote_bookmarks(exact:${quoteJjString(remoteBookmark.name)}, exact:${quoteJjString(remoteBookmark.remote)})`;
+  }
+
+  const localBookmark = parseJjBookmarkName(target);
+  return localBookmark ? `bookmarks(exact:${quoteJjString(localBookmark)})` : target;
+}
+
+export function jjLineBaseRevset(target: string): string {
+  const compareTarget = jjCompareTargetRevset(target);
+  return `heads(::@ & ::(${compareTarget}))`;
+}
+
+function parseJjBookmarkName(target: string): string | null {
+  if (!target || target.startsWith("@") || /[()\s]/.test(target)) return null;
+  return target;
+}
+
+function quoteJjString(value: string): string {
+  return JSON.stringify(value);
 }
 
 export async function getCurrentBranch(
@@ -298,7 +356,21 @@ export async function getGitContext(
     diffOptions,
     worktrees: worktrees.filter((wt) => wt.path !== currentTreePath),
     availableBranches,
+    compareTarget: {
+      diffTypes: ["branch", "merge-base"],
+      fallback: "main",
+      picker: {
+        rowLabel: "compare against",
+        triggerLabel: "base",
+        triggerTitlePrefix: "Review base",
+        searchPlaceholder: "Search branches…",
+        emptyText: "No branches match.",
+        localGroupLabel: "Local",
+        remoteGroupLabel: "Remote",
+      },
+    },
     cwd,
+    vcsType: "git",
   };
 }
 

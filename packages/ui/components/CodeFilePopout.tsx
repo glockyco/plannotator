@@ -417,7 +417,6 @@ export const CodeFilePopout: React.FC<CodeFilePopoutProps> = ({
     return (
       <button
         type="button"
-        className="hover-add-comment"
         style={gutterButtonStyle}
         title="Add code comment"
         onMouseEnter={(e) => {

@@ -531,6 +531,7 @@ if !ERRORLEVEL! equ 0 (
             xcopy /s /y /q "apps\skills\*" "!CLAUDE_SKILLS_DIR!\" >nul 2>&1
             if exist "apps\skills\plannotator-compound" xcopy /s /i /y /q "apps\skills\plannotator-compound" "!AGENTS_SKILLS_DIR!\plannotator-compound\" >nul 2>&1
             if exist "apps\skills\plannotator-setup-goal" xcopy /s /i /y /q "apps\skills\plannotator-setup-goal" "!AGENTS_SKILLS_DIR!\plannotator-setup-goal\" >nul 2>&1
+            if exist "apps\skills\plannotator-visual-explainer" xcopy /s /i /y /q "apps\skills\plannotator-visual-explainer" "!AGENTS_SKILLS_DIR!\plannotator-visual-explainer\" >nul 2>&1
             if "!CODEX_AVAILABLE!"=="1" (
                 if not exist "!CODEX_SKILLS_DIR!" mkdir "!CODEX_SKILLS_DIR!"
                 if exist "apps\skills\plannotator-review" xcopy /s /i /y /q "apps\skills\plannotator-review" "!CODEX_SKILLS_DIR!\plannotator-review\" >nul 2>&1
@@ -562,7 +563,7 @@ if !ERRORLEVEL! equ 0 (
     if !ERRORLEVEL! equ 0 (
         set "PI_SHARED_SKILLS_DIR=%USERPROFILE%\.agents\skills"
         set "PI_SHARED_SKILLS_AVAILABLE=0"
-        if exist "!PI_SHARED_SKILLS_DIR!\plannotator-compound\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\plannotator-setup-goal\SKILL.md" set "PI_SHARED_SKILLS_AVAILABLE=1"
+        if exist "!PI_SHARED_SKILLS_DIR!\plannotator-compound\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\plannotator-setup-goal\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\plannotator-visual-explainer\SKILL.md" set "PI_SHARED_SKILLS_AVAILABLE=1"
         if "!PI_SHARED_SKILLS_AVAILABLE!"=="1" (
             if defined PI_CODING_AGENT_DIR (
                 set "PI_SETTINGS_PATH=!PI_CODING_AGENT_DIR!\settings.json"

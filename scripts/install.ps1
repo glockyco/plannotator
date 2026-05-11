@@ -317,7 +317,8 @@ Remove-Item -Recurse -Force "$env:TEMP\jiti" -ErrorAction SilentlyContinue
 function Test-PlannotatorSharedAgentSkillsAvailable {
     $agentsSkillsDir = "$env:USERPROFILE\.agents\skills"
     return (Test-Path (Join-Path $agentsSkillsDir "plannotator-compound\SKILL.md")) -and
-        (Test-Path (Join-Path $agentsSkillsDir "plannotator-setup-goal\SKILL.md"))
+        (Test-Path (Join-Path $agentsSkillsDir "plannotator-setup-goal\SKILL.md")) -and
+        (Test-Path (Join-Path $agentsSkillsDir "plannotator-visual-explainer\SKILL.md"))
 }
 
 function Configure-PiPlannotatorPackageFilter {
@@ -575,6 +576,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
                         Copy-Item -Recurse -Force "apps\skills\*" $claudeSkillsDir
                         Copy-SkillIfPresent "apps\skills\plannotator-compound" $agentsSkillsDir
                         Copy-SkillIfPresent "apps\skills\plannotator-setup-goal" $agentsSkillsDir
+                        Copy-SkillIfPresent "apps\skills\plannotator-visual-explainer" $agentsSkillsDir
                         if ($codexAvailable) {
                             New-Item -ItemType Directory -Force -Path $codexSkillsDir | Out-Null
                             Copy-SkillIfPresent "apps\skills\plannotator-review" $codexSkillsDir

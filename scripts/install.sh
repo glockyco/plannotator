@@ -550,7 +550,8 @@ plannotator_shared_agent_skills_available() {
     local agents_skills_dir="$HOME/.agents/skills"
 
     [ -f "$agents_skills_dir/plannotator-compound/SKILL.md" ] &&
-        [ -f "$agents_skills_dir/plannotator-setup-goal/SKILL.md" ]
+        [ -f "$agents_skills_dir/plannotator-setup-goal/SKILL.md" ] &&
+        [ -f "$agents_skills_dir/plannotator-visual-explainer/SKILL.md" ]
 }
 
 configure_pi_plannotator_package_filter() {
@@ -798,6 +799,7 @@ if command -v git &>/dev/null; then
         cp -r apps/skills/* "$CLAUDE_SKILLS_DIR/"
         copy_skill_if_present apps/skills/plannotator-compound "$AGENTS_SKILLS_DIR"
         copy_skill_if_present apps/skills/plannotator-setup-goal "$AGENTS_SKILLS_DIR"
+        copy_skill_if_present apps/skills/plannotator-visual-explainer "$AGENTS_SKILLS_DIR"
         if [ "$codex_available" -eq 1 ]; then
             mkdir -p "$CODEX_SKILLS_DIR"
             copy_skill_if_present apps/skills/plannotator-review "$CODEX_SKILLS_DIR"

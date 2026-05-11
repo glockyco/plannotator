@@ -1,5 +1,6 @@
 ---
 name: plannotator-visual-explainer
+disable-model-invocation: true
 description: >
   Generate beautiful, self-contained HTML visualizations themed with Plannotator's design system.
   Wraps the visual-explainer skill by nicobailon with Plannotator theme token integration. Use for

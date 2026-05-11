@@ -384,7 +384,7 @@ describe("install.cmd", () => {
     expect(script).toContain("Leaving Pi bundled skills enabled ^(global Plannotator agent skills not found^).");
     expect(script).toContain("Configured Pi to use global Plannotator skills and skip bundled package skills.");
     expect(script).toContain('set "PI_SHARED_SKILLS_AVAILABLE=0"');
-    expect(script).toContain('if exist "!PI_SHARED_SKILLS_DIR!\\plannotator-compound\\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\\plannotator-setup-goal\\SKILL.md" set "PI_SHARED_SKILLS_AVAILABLE=1"');
+    expect(script).toContain('if exist "!PI_SHARED_SKILLS_DIR!\\plannotator-compound\\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\\plannotator-setup-goal\\SKILL.md" if exist "!PI_SHARED_SKILLS_DIR!\\plannotator-visual-explainer\\SKILL.md" set "PI_SHARED_SKILLS_AVAILABLE=1"');
     expect(script).toContain('if "!PI_SHARED_SKILLS_AVAILABLE!"=="1"');
 
     const skillsInstallIndex = script.indexOf("REM Install skills (requires git)");

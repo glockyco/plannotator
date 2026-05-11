@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { toast, Toaster } from 'sonner';
 import { type Origin, getAgentName } from '@plannotator/shared/agents';
 import { parseMarkdownToBlocks, exportAnnotations, exportLinkedDocAnnotations, exportEditorAnnotations, exportCodeFileAnnotations, extractFrontmatter, wrapFeedbackForAgent, Frontmatter, type LinkedDocAnnotationEntry } from '@plannotator/ui/utils/parser';
 import { Viewer, ViewerHandle } from '@plannotator/ui/components/Viewer';
@@ -13,11 +14,8 @@ import { AnnotationToolstrip } from '@plannotator/ui/components/AnnotationToolst
 import { StickyHeaderLane } from '@plannotator/ui/components/StickyHeaderLane';
 import { TaterSpriteRunning } from '@plannotator/ui/components/TaterSpriteRunning';
 import { TaterSpritePullup } from '@plannotator/ui/components/TaterSpritePullup';
-import { Settings } from '@plannotator/ui/components/Settings';
-import { FeedbackButton, ApproveButton, ExitButton } from '@plannotator/ui/components/ToolbarButtons';
-import { ApproveDropdown } from '@plannotator/ui/components/ApproveDropdown';
 import { useSharing } from '@plannotator/ui/hooks/useSharing';
-import { getCallbackConfig, CallbackAction, executeCallback, type ToastPayload } from '@plannotator/ui/utils/callback';
+import { getCallbackConfig, CallbackAction, executeCallback } from '@plannotator/ui/utils/callback';
 import { useAgents } from '@plannotator/ui/hooks/useAgents';
 import { useActiveSection } from '@plannotator/ui/hooks/useActiveSection';
 import { storage } from '@plannotator/ui/utils/storage';
@@ -41,7 +39,6 @@ import { OverlayScrollArea } from '@plannotator/ui/components/OverlayScrollArea'
 import { ScrollViewportContext } from '@plannotator/ui/hooks/useScrollViewport';
 import { useOverlayViewport } from '@plannotator/ui/hooks/useOverlayViewport';
 import { useIsMobile } from '@plannotator/ui/hooks/useIsMobile';
-import { PlanHeaderMenu } from '@plannotator/ui/components/PlanHeaderMenu';
 import {
   getPermissionModeSettings,
   needsPermissionModeSetup,
@@ -84,6 +81,7 @@ const DEMO_PLAN_CONTENT = USE_DIFF_DEMO
   ? DIFF_DEMO_PLAN_CONTENT
   : DEFAULT_DEMO_PLAN_CONTENT;
 import { useCheckboxOverrides } from './hooks/useCheckboxOverrides';
+import { AppHeader } from './components/AppHeader';
 
 type NoteAutoSaveResults = {
   obsidian?: boolean;
@@ -97,8 +95,8 @@ const App: React.FC = () => {
   const [codeAnnotations, setCodeAnnotations] = useState<CodeAnnotation[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [selectedCodeAnnotationId, setSelectedCodeAnnotationId] = useState<string | null>(null);
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [frontmatter, setFrontmatter] = useState<Frontmatter | null>(null);
+  const frontmatter = useMemo(() => extractFrontmatter(markdown).frontmatter, [markdown]);
+  const blocks = useMemo(() => parseMarkdownToBlocks(markdown), [markdown]);
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showFeedbackPrompt, setShowFeedbackPrompt] = useState(false);
@@ -180,7 +178,6 @@ const App: React.FC = () => {
   }, [repoInfo]);
 
   const [initialExportTab, setInitialExportTab] = useState<'share' | 'annotations' | 'notes'>();
-  const [noteSaveToast, setNoteSaveToast] = useState<ToastPayload>(null);
   const [isPlanDiffActive, setIsPlanDiffActive] = useState(false);
   const [planDiffMode, setPlanDiffMode] = useState<PlanDiffMode>('clean');
   const [previousPlan, setPreviousPlan] = useState<string | null>(null);
@@ -682,10 +679,10 @@ const App: React.FC = () => {
     }
   }, [pendingSharedAnnotations, clearPendingSharedAnnotations, resetExternalHighlights]);
 
-  const handleTaterModeChange = (enabled: boolean) => {
+  const handleTaterModeChange = useCallback((enabled: boolean) => {
     setTaterMode(enabled);
     storage.setItem('plannotator-tater-mode', String(enabled));
-  };
+  }, []);
 
   const handleEditorModeChange = (mode: EditorMode) => {
     setEditorMode(mode);
@@ -790,12 +787,6 @@ const App: React.FC = () => {
       .finally(() => setIsLoading(false));
   }, [isLoadingShared, isSharedSession]);
 
-  useEffect(() => {
-    const { frontmatter: fm } = extractFrontmatter(markdown);
-    setFrontmatter(fm);
-    setBlocks(parseMarkdownToBlocks(markdown));
-  }, [markdown]);
-
   // Auto-save to notes apps on plan arrival (each gated by its autoSave toggle)
   const autoSaveAttempted = useRef(false);
   const autoSaveResultsRef = useRef<NoteAutoSaveResults>({});
@@ -868,19 +859,18 @@ const App: React.FC = () => {
 
         const failed = targets.filter(t => !data.results?.[t.toLowerCase()]?.success);
         if (failed.length === 0) {
-          setNoteSaveToast({ type: 'success', message: `Auto-saved to ${targets.join(' & ')}` });
+          toast.success(`Auto-saved to ${targets.join(' & ')}`);
         } else {
-          setNoteSaveToast({ type: 'error', message: `Auto-save failed for ${failed.join(' & ')}` });
+          toast.error(`Auto-save failed for ${failed.join(' & ')}`);
         }
 
         return results;
       })
       .catch(() => {
         autoSaveResultsRef.current = {};
-        setNoteSaveToast({ type: 'error', message: 'Auto-save failed' });
+        toast.error('Auto-save failed');
         return {};
-      })
-      .finally(() => setTimeout(() => setNoteSaveToast(null), 3000));
+      });
     autoSavePromiseRef.current = autoSavePromise;
   }, [isApiMode, markdown, isSharedSession, annotateMode]);
 
@@ -1257,14 +1247,14 @@ const App: React.FC = () => {
     ));
   };
 
-  const handleIdentityChange = (oldIdentity: string, newIdentity: string) => {
+  const handleIdentityChange = useCallback((oldIdentity: string, newIdentity: string) => {
     setAnnotations(prev => prev.map(ann =>
       ann.author === oldIdentity ? { ...ann, author: newIdentity } : ann
     ));
     setCodeAnnotations(prev => prev.map(ann =>
       ann.author === oldIdentity ? { ...ann, author: newIdentity } : ann
     ));
-  };
+  }, []);
 
   const handleAddGlobalAttachment = (image: ImageAttachment) => {
     setGlobalAttachments(prev => [...prev, image]);
@@ -1343,12 +1333,13 @@ const App: React.FC = () => {
     if (!callbackConfig || isSubmitting || !shareUrl) return;
     setIsSubmitting(true);
     try {
-      const toast = await executeCallback(action, callbackConfig, shareUrl);
-      if (toast) {
-        setNoteSaveToast(toast);
-        setTimeout(() => setNoteSaveToast(null), 4000);
-        if (toast.type === 'success') {
+      const result = await executeCallback(action, callbackConfig, shareUrl);
+      if (result) {
+        if (result.type === 'success') {
+          toast.success(result.message);
           setSubmitted(action === CallbackAction.Approve ? 'approved' : 'denied');
+        } else {
+          toast.error(result.message);
         }
       }
     } finally {
@@ -1368,8 +1359,7 @@ const App: React.FC = () => {
     a.download = 'annotations.md';
     a.click();
     URL.revokeObjectURL(url);
-    setNoteSaveToast({ type: 'success', message: 'Downloaded annotations' });
-    setTimeout(() => setNoteSaveToast(null), 3000);
+    toast.success('Downloaded annotations');
   };
 
   const handleQuickSaveToNotes = async (target: 'obsidian' | 'bear' | 'octarine') => {
@@ -1415,14 +1405,13 @@ const App: React.FC = () => {
       const data = await res.json();
       const result = data.results?.[target];
       if (result?.success) {
-        setNoteSaveToast({ type: 'success', message: `Saved to ${targetName}` });
+        toast.success(`Saved to ${targetName}`);
       } else {
-        setNoteSaveToast({ type: 'error', message: result?.error || 'Save failed' });
+        toast.error(result?.error || 'Save failed');
       }
     } catch {
-      setNoteSaveToast({ type: 'error', message: 'Save failed' });
+      toast.error('Save failed');
     }
-    setTimeout(() => setNoteSaveToast(null), 3000);
   };
 
   // Agent Instructions — copy a clipboard payload teaching external agents
@@ -1433,21 +1422,19 @@ const App: React.FC = () => {
     const payload = buildPlanAgentInstructions(window.location.origin);
     try {
       await navigator.clipboard.writeText(payload);
-      setNoteSaveToast({ type: 'success', message: 'Agent instructions copied' });
+      toast.success('Agent instructions copied');
     } catch {
-      setNoteSaveToast({ type: 'error', message: 'Failed to copy' });
+      toast.error('Failed to copy');
     }
-    setTimeout(() => setNoteSaveToast(null), 3000);
   };
 
   const handleCopyShareLink = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setNoteSaveToast({ type: 'success', message: 'Share link copied' });
+      toast.success('Share link copied');
     } catch {
-      setNoteSaveToast({ type: 'error', message: 'Failed to copy' });
+      toast.error('Failed to copy');
     }
-    setTimeout(() => setNoteSaveToast(null), 3000);
   };
 
   // Cmd/Ctrl+S keyboard shortcut — save to default notes app
@@ -1518,6 +1505,98 @@ const App: React.FC = () => {
 
   const agentName = useMemo(() => getAgentName(origin), [origin]);
 
+  // Header handlers ref — stores latest handler references so the stable
+  // callbacks below always call the current version without needing useCallback
+  // dep arrays for every handler. This lets React.memo on AppHeader work.
+  const headerHandlersRef = useRef({
+    handleApprove,
+    handleDeny,
+    handleAnnotateApprove,
+    handleAnnotateFeedback,
+    handleAnnotateExit,
+    handleQuickSaveToNotes,
+    handleDownloadAnnotations,
+    handleCopyAgentInstructions,
+    handleCopyShareLink,
+    getAgentWarning,
+    getDocAnnotations: linkedDocHook.getDocAnnotations,
+  });
+  headerHandlersRef.current = {
+    handleApprove,
+    handleDeny,
+    handleAnnotateApprove,
+    handleAnnotateFeedback,
+    handleAnnotateExit,
+    handleQuickSaveToNotes,
+    handleDownloadAnnotations,
+    handleCopyAgentInstructions,
+    handleCopyShareLink,
+    getAgentWarning,
+    getDocAnnotations: linkedDocHook.getDocAnnotations,
+  };
+
+  const handleHeaderAnnotateExit = useCallback(() => {
+    if (hasAnyAnnotations) {
+      setExitWarningAction('close');
+      setShowExitWarning(true);
+    } else {
+      headerHandlersRef.current.handleAnnotateExit();
+    }
+  }, [hasAnyAnnotations]);
+
+  const handleHeaderFeedback = useCallback(() => {
+    const h = headerHandlersRef.current;
+    const docAnnotations = h.getDocAnnotations();
+    const hasDocAnnotations = Array.from(docAnnotations.values()).some(
+      (d) => d.annotations.length > 0 || d.globalAttachments.length > 0
+    );
+    if (allAnnotations.length === 0 && codeAnnotations.length === 0 && editorAnnotations.length === 0 && !hasDocAnnotations) {
+      setShowFeedbackPrompt(true);
+    } else {
+      h.handleDeny();
+    }
+  }, [allAnnotations.length, codeAnnotations.length, editorAnnotations.length]);
+
+  const handleHeaderApprove = useCallback(() => {
+    const h = headerHandlersRef.current;
+    if (annotateMode) {
+      if (hasAnyAnnotations) {
+        setExitWarningAction('approve');
+        setShowExitWarning(true);
+        return;
+      }
+      h.handleAnnotateApprove();
+      return;
+    }
+    if (origin === 'claude-code' && (allAnnotations.length > 0 || codeAnnotations.length > 0)) {
+      setShowClaudeCodeWarning(true);
+      return;
+    }
+    if (origin === 'opencode') {
+      const warning = h.getAgentWarning();
+      if (warning) {
+        setAgentWarningMessage(warning);
+        setShowAgentWarning(true);
+        return;
+      }
+    }
+    h.handleApprove();
+  }, [annotateMode, hasAnyAnnotations, origin, allAnnotations.length, codeAnnotations.length]);
+
+  const handleHeaderAnnotateFeedback = useCallback(() => headerHandlersRef.current.handleAnnotateFeedback(), []);
+  const handleHeaderAnnotateApprove = useCallback(() => headerHandlersRef.current.handleAnnotateApprove(), []);
+  const handleHeaderDownloadAnnotations = useCallback(() => headerHandlersRef.current.handleDownloadAnnotations(), []);
+  const handleHeaderCopyAgentInstructions = useCallback(() => headerHandlersRef.current.handleCopyAgentInstructions(), []);
+  const handleHeaderCopyShareLink = useCallback(() => headerHandlersRef.current.handleCopyShareLink(), []);
+  const handleOpenSettings = useCallback(() => setMobileSettingsOpen(true), []);
+  const handleCloseSettings = useCallback(() => setMobileSettingsOpen(false), []);
+  const handleOpenExport = useCallback(() => { setInitialExportTab(undefined); setShowExport(true); }, []);
+  const handlePrint = useCallback(() => window.print(), []);
+  const handleOpenImport = useCallback(() => setShowImport(true), []);
+  const handleSaveToObsidian = useCallback(() => headerHandlersRef.current.handleQuickSaveToNotes('obsidian'), []);
+  const handleSaveToOctarine = useCallback(() => headerHandlersRef.current.handleQuickSaveToNotes('octarine'), []);
+  const handleSaveToBear = useCallback(() => headerHandlersRef.current.handleQuickSaveToNotes('bear'), []);
+
   const planMaxWidth = useMemo(() => {
     const widths: Record<PlanWidth, number> = { compact: 832, default: 1040, wide: 1280 };
     return widths[uiPrefs.planWidth] ?? 832;
@@ -1529,225 +1608,57 @@ const App: React.FC = () => {
     <ThemeProvider defaultTheme="dark">
       <TooltipProvider delayDuration={900} skipDelayDuration={200} disableHoverableContent>
       <div data-print-region="root" className="h-screen flex flex-col bg-background overflow-hidden">
-        {/* Minimal Header */}
-        <header data-app-header="true" className="h-12 flex items-center justify-between px-2 md:px-4 border-b border-border/50 bg-card/50 backdrop-blur-xl sticky top-0 z-[50]">
-          <div className="flex items-center gap-2 md:gap-3">
-            <a
-              href="https://plannotator.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
-            >
-              <span className="text-sm font-semibold tracking-tight">Plannotator</span>
-            </a>
-          </div>
-
-          <div className="flex items-center gap-1 md:gap-2">
-            {/* Bot callback buttons — only shown when ?cb=&ct= params are present */}
-            {callbackConfig && !isApiMode && isSharedSession && (
-              <>
-                <div className="w-px h-5 bg-border/50 mx-1 hidden md:block" />
-                <FeedbackButton
-                  onClick={handleCallbackFeedback}
-                  disabled={isSubmitting || !shareUrl}
-                  isLoading={isSubmitting}
-                  title="Send feedback to bot"
-                />
-                <ApproveButton
-                  onClick={handleCallbackApprove}
-                  disabled={isSubmitting || !shareUrl}
-                  isLoading={isSubmitting}
-                  title="Approve design and notify bot"
-                />
-              </>
-            )}
-
-            {isApiMode && !linkedDocHook.isActive && archive.archiveMode && (
-              <>
-                <button
-                  onClick={archive.copy}
-                  className="px-2.5 py-1 rounded-md text-xs font-medium transition-all bg-muted text-foreground hover:bg-muted/80 border border-border"
-                  title="Copy plan content"
-                >
-                  <span className="hidden md:inline">Copy</span>
-                  <svg className="w-4 h-4 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={archive.done}
-                  className="px-2.5 py-1 rounded-md text-xs font-medium transition-all bg-success text-success-foreground hover:opacity-90"
-                  title="Close archive"
-                >
-                  Done
-                </button>
-              </>
-            )}
-
-            {isApiMode && (!linkedDocHook.isActive || annotateMode) && !archive.archiveMode && (
-              <>
-                {annotateMode ? (
-                  // Annotate mode: Close always visible, Send Annotations when annotations exist,
-                  // Approve only when gate (review) mode is enabled (#570).
-                  <>
-                    <ExitButton
-                      onClick={() => {
-                        if (hasAnyAnnotations) {
-                          setExitWarningAction('close');
-                          setShowExitWarning(true);
-                        } else {
-                          handleAnnotateExit();
-                        }
-                      }}
-                      disabled={isSubmitting || isExiting}
-                      isLoading={isExiting}
-                    />
-                    {hasAnyAnnotations && (
-                      <FeedbackButton
-                        onClick={handleAnnotateFeedback}
-                        disabled={isSubmitting || isExiting}
-                        isLoading={isSubmitting}
-                        label="Send Annotations"
-                        title="Send Annotations"
-                      />
-                    )}
-                  </>
-                ) : (
-                  // Plan mode: Send Feedback
-                  <FeedbackButton
-                    onClick={() => {
-                      const docAnnotations = linkedDocHook.getDocAnnotations();
-                      const hasDocAnnotations = Array.from(docAnnotations.values()).some(
-                        (d) => d.annotations.length > 0 || d.globalAttachments.length > 0
-                      );
-                      if (allAnnotations.length === 0 && codeAnnotations.length === 0 && editorAnnotations.length === 0 && !hasDocAnnotations) {
-                        setShowFeedbackPrompt(true);
-                      } else {
-                        handleDeny();
-                      }
-                    }}
-                    disabled={isSubmitting}
-                    isLoading={isSubmitting}
-                    label="Send Feedback"
-                    title="Send Feedback"
-                  />
-                )}
-
-                {(!annotateMode || gate) && (
-                  origin === 'opencode' && !annotateMode && availableAgents.length > 0 ? (
-                    <ApproveDropdown
-                      onApprove={() => {
-                        const warning = getAgentWarning();
-                        if (warning) {
-                          setAgentWarningMessage(warning);
-                          setShowAgentWarning(true);
-                          return;
-                        }
-                        handleApprove();
-                      }}
-                      agents={availableAgents}
-                      disabled={isSubmitting}
-                      isLoading={isSubmitting}
-                    />
-                  ) : (
-                    <div className="relative group/approve">
-                      <ApproveButton
-                        onClick={() => {
-                          if (annotateMode) {
-                            if (hasAnyAnnotations) {
-                              setExitWarningAction('approve');
-                              setShowExitWarning(true);
-                              return;
-                            }
-                            handleAnnotateApprove();
-                            return;
-                          }
-                          if (origin === 'claude-code' && (allAnnotations.length > 0 || codeAnnotations.length > 0)) {
-                            setShowClaudeCodeWarning(true);
-                            return;
-                          }
-                          if (origin === 'opencode') {
-                            const warning = getAgentWarning();
-                            if (warning) {
-                              setAgentWarningMessage(warning);
-                              setShowAgentWarning(true);
-                              return;
-                            }
-                          }
-                          handleApprove();
-                        }}
-                        disabled={isSubmitting || (annotateMode && isExiting)}
-                        isLoading={isSubmitting}
-                        dimmed={!annotateMode && (origin === 'claude-code' || origin === 'gemini-cli') && (allAnnotations.length > 0 || codeAnnotations.length > 0)}
-                        title={annotateMode ? 'Approve — no changes requested' : undefined}
-                      />
-                      {!annotateMode && (origin === 'claude-code' || origin === 'gemini-cli') && (allAnnotations.length > 0 || codeAnnotations.length > 0) && (
-                        <div className="absolute top-full right-0 mt-2 px-3 py-2 bg-popover border border-border rounded-lg shadow-xl text-xs text-foreground w-56 text-center opacity-0 invisible group-hover/approve:opacity-100 group-hover/approve:visible transition-all pointer-events-none z-50">
-                          <div className="absolute bottom-full right-4 border-4 border-transparent border-b-border" />
-                          <div className="absolute bottom-full right-4 mt-px border-4 border-transparent border-b-popover" />
-                          {agentName} doesn't support feedback on approval. Your annotations won't be seen.
-                        </div>
-                      )}
-                    </div>
-                  )
-                )}
-
-                <div className="w-px h-5 bg-border/50 mx-1 hidden md:block" />
-              </>
-            )}
-
-            {/* Annotations panel toggle — top-level header button */}
-            <button
-              onClick={handleAnnotationPanelToggle}
-              className={`p-1.5 rounded-md text-xs font-medium transition-all ${
-                isPanelOpen
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
-              title={isPanelOpen ? 'Hide annotations' : 'Show annotations'}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-              </svg>
-            </button>
-
-            {/* Settings dialog (controlled, button hidden — opened from PlanHeaderMenu) */}
-            <div className="hidden">
-              <Settings
-                taterMode={taterMode}
-                onTaterModeChange={handleTaterModeChange}
-                onIdentityChange={handleIdentityChange}
-                origin={origin}
-                onUIPreferencesChange={setUiPrefs}
-                externalOpen={mobileSettingsOpen}
-                onExternalClose={() => setMobileSettingsOpen(false)}
-                gitUser={gitUser}
-              />
-            </div>
-
-            <PlanHeaderMenu
-              appVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'}
-              onOpenSettings={() => {
-                setMobileSettingsOpen(true);
-              }}
-              onOpenExport={() => { setInitialExportTab(undefined); setShowExport(true); }}
-              onCopyAgentInstructions={handleCopyAgentInstructions}
-              onDownloadAnnotations={handleDownloadAnnotations}
-              onPrint={() => window.print()}
-              onCopyShareLink={handleCopyShareLink}
-              onOpenImport={() => setShowImport(true)}
-              onSaveToObsidian={() => handleQuickSaveToNotes('obsidian')}
-              onSaveToBear={() => handleQuickSaveToNotes('bear')}
-              onSaveToOctarine={() => handleQuickSaveToNotes('octarine')}
-              sharingEnabled={canShareCurrentSession}
-              isApiMode={isApiMode}
-              agentInstructionsEnabled={isApiMode && !archive.archiveMode && !annotateMode}
-              obsidianConfigured={isObsidianConfigured()}
-              bearConfigured={getBearSettings().enabled}
-              octarineConfigured={isOctarineConfigured()}
-            />
-          </div>
-        </header>
+        <AppHeader
+          isApiMode={isApiMode}
+          annotateMode={annotateMode}
+          archiveMode={archive.archiveMode}
+          gate={gate}
+          isSharedSession={isSharedSession}
+          origin={origin}
+          isSubmitting={isSubmitting}
+          isExiting={isExiting}
+          isPanelOpen={isPanelOpen}
+          hasAnyAnnotations={hasAnyAnnotations}
+          linkedDocIsActive={linkedDocHook.isActive}
+          callbackShareUrlReady={callbackConfig ? Boolean(shareUrl) : true}
+          canShareCurrentSession={canShareCurrentSession}
+          agentName={agentName}
+          availableAgents={availableAgents}
+          showAnnotationsWarning={allAnnotations.length > 0 || codeAnnotations.length > 0}
+          callbackConfig={callbackConfig}
+          taterMode={taterMode}
+          mobileSettingsOpen={mobileSettingsOpen}
+          gitUser={gitUser}
+          onCallbackFeedback={handleCallbackFeedback}
+          onCallbackApprove={handleCallbackApprove}
+          onAnnotateExit={handleHeaderAnnotateExit}
+          onAnnotateFeedback={handleHeaderAnnotateFeedback}
+          onAnnotateApprove={handleHeaderAnnotateApprove}
+          onFeedback={handleHeaderFeedback}
+          onApprove={handleHeaderApprove}
+          onAnnotationPanelToggle={handleAnnotationPanelToggle}
+          onArchiveCopy={archive.copy}
+          onArchiveDone={archive.done}
+          onTaterModeChange={handleTaterModeChange}
+          onIdentityChange={handleIdentityChange}
+          onUIPreferencesChange={setUiPrefs}
+          onOpenSettings={handleOpenSettings}
+          onCloseSettings={handleCloseSettings}
+          onOpenExport={handleOpenExport}
+          onCopyAgentInstructions={handleHeaderCopyAgentInstructions}
+          onDownloadAnnotations={handleHeaderDownloadAnnotations}
+          onPrint={handlePrint}
+          onCopyShareLink={handleHeaderCopyShareLink}
+          onOpenImport={handleOpenImport}
+          onSaveToObsidian={handleSaveToObsidian}
+          onSaveToBear={handleSaveToBear}
+          onSaveToOctarine={handleSaveToOctarine}
+          appVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'}
+          agentInstructionsEnabled={isApiMode && !archive.archiveMode && !annotateMode}
+          obsidianConfigured={isObsidianConfigured()}
+          bearConfigured={getBearSettings().enabled}
+          octarineConfigured={isOctarineConfigured()}
+        />
 
         {/* Linked document error banner */}
         {linkedDocHook.error && (
@@ -2147,16 +2058,23 @@ const App: React.FC = () => {
           variant="warning"
         />
 
-        {/* Save-to-notes toast */}
-        {noteSaveToast && (
-          <div className={`fixed top-16 right-4 z-50 px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-opacity ${
-            noteSaveToast.type === 'success'
-              ? 'bg-success/15 text-success border border-success/30'
-              : 'bg-destructive/15 text-destructive border border-destructive/30'
-          }`}>
-            {noteSaveToast.message}
-          </div>
-        )}
+        <Toaster
+          position="top-right"
+          offset={64}
+          toastOptions={{
+            style: {
+              '--normal-bg': 'var(--card)',
+              '--normal-border': 'var(--border)',
+              '--normal-text': 'var(--foreground)',
+              '--success-bg': 'oklch(from var(--success) l c h / 0.15)',
+              '--success-border': 'oklch(from var(--success) l c h / 0.3)',
+              '--success-text': 'var(--success)',
+              '--error-bg': 'oklch(from var(--destructive) l c h / 0.15)',
+              '--error-border': 'oklch(from var(--destructive) l c h / 0.3)',
+              '--error-text': 'var(--destructive)',
+            } as React.CSSProperties,
+          }}
+        />
 
         {/* Completion overlay - shown after approve/deny */}
         <CompletionOverlay

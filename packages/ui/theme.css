@@ -191,6 +191,15 @@ body {
   background: oklch(from var(--primary) l c h / 0.3);
 }
 
+/* Suppress all color transitions until the app has mounted and the theme
+   is stable. Without this, the global * transition below fires on initial
+   load — className reassignments during React mount trigger a 150ms
+   transition from browser-default black to themed white, causing a visible
+   flash. ThemeProvider adds .transitions-ready after mount. */
+html:not(.transitions-ready) * {
+  transition-duration: 0s !important;
+}
+
 /* Smooth transitions for theme switching and hover states.
    Only color properties — transform/opacity are handled per-component
    to avoid interfering with scroll compositing. */

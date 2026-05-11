@@ -28,10 +28,17 @@ plannotator/
 │   │   ├── index.html
 │   │   ├── index.tsx
 │   │   └── vite.config.ts
-│   └── vscode-extension/         # VS Code extension — opens plans in editor tabs
-│       ├── bin/                   # Router scripts (open-in-vscode, xdg-open)
-│       ├── src/                   # extension.ts, cookie-proxy.ts, ipc-server.ts, panel-manager.ts, editor-annotations.ts, vscode-theme.ts
-│       └── package.json           # Extension manifest (publisher: backnotprop)
+│   ├── vscode-extension/         # VS Code extension — opens plans in editor tabs
+│   │   ├── bin/                   # Router scripts (open-in-vscode, xdg-open)
+│   │   ├── src/                   # extension.ts, cookie-proxy.ts, ipc-server.ts, panel-manager.ts, editor-annotations.ts, vscode-theme.ts
+│   │   └── package.json           # Extension manifest (publisher: backnotprop)
+│   └── skills/                    # Agent skills (agentskills.io format)
+│       ├── plannotator-review/          # Lightweight: opens review UI
+│       ├── plannotator-annotate/        # Lightweight: opens annotate UI
+│       ├── plannotator-last/            # Lightweight: annotates last message
+│       ├── plannotator-compound/        # Research analysis agent (map-reduce over denied plans)
+│       ├── plannotator-setup-goal/      # Goal package scaffolder for /goal workflows
+│       └── plannotator-visual-explainer/ # Visual HTML generator (plans, diagrams, PR explainers) with Plannotator theming
 ├── packages/
 │   ├── server/                   # Shared server implementation
 │   │   ├── index.ts              # startPlannotatorServer(), handleServerReady()
@@ -176,7 +183,7 @@ OpenCode/Pi: event handler intercepts command
         ↓
 Input type detected:
   .md/.mdx   → file read from disk
-  .html/.htm → file read, converted to markdown via Turndown
+  .html/.htm → file read, converted to markdown via Turndown (or rendered as-is with --render-html)
   https://   → fetched via Jina Reader (default) or fetch+Turndown (--no-jina)
   folder/    → file browser opened, files converted on demand
         ↓
@@ -275,7 +282,7 @@ During normal plan review, an Archive sidebar tab provides the same browsing via
 
 | Endpoint              | Method | Purpose                                    |
 | --------------------- | ------ | ------------------------------------------ |
-| `/api/plan`           | GET    | Returns `{ plan, origin, mode: "annotate", filePath, sourceInfo?, gate }` |
+| `/api/plan`           | GET    | Returns `{ plan, origin, mode: "annotate", filePath, sourceInfo?, gate, renderAs?, rawHtml? }` |
 | `/api/feedback`       | POST   | Submit annotations (body: feedback, annotations) |
 | `/api/approve`        | POST   | Approve without feedback (review-gate UX, `--gate`) |
 | `/api/exit`           | POST   | Close session without feedback |
@@ -428,6 +435,9 @@ interface SharePayload {
   a: ShareableAnnotation[]; // Compact annotations
   g?: ShareableImage[]; // Global attachments
   d?: (string | null)[]; // diffContext per annotation, parallel to `a`
+  s?: (string | undefined)[]; // source per annotation (external tool identifier), parallel to `a`
+  h?: string; // Raw HTML content (--render-html mode)
+  r?: 'html'; // Render mode flag (omitted = markdown)
 }
 
 type ShareableAnnotation =

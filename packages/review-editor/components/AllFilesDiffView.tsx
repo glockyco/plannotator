@@ -12,6 +12,7 @@ import { detectLanguage } from '../utils/detectLanguage';
 import type { DiffFile } from '../types';
 import { buildFileTree, getVisualFileOrder } from '../utils/buildFileTree';
 import { getLineNumberFromNode, getSideFromNode, getDiffSelection } from '../utils/diffSelection';
+import type { AIChatEntry } from '../hooks/useAIChat';
 
 interface AllFilesDiffViewProps {
   files: DiffFile[];
@@ -44,6 +45,12 @@ interface AllFilesDiffViewProps {
   prDiffScope?: string;
   onVisibleFileChange?: (filePath: string | null) => void;
   isActive?: boolean;
+  // AI props
+  aiAvailable?: boolean;
+  onAskAI?: (question: string) => void;
+  isAILoading?: boolean;
+  onViewAIResponse?: (questionId?: string) => void;
+  aiHistoryForSelection?: AIChatEntry[];
 }
 
 export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
@@ -77,6 +84,11 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
   prDiffScope,
   onVisibleFileChange,
   isActive = true,
+  aiAvailable = false,
+  onAskAI,
+  isAILoading = false,
+  onViewAIResponse,
+  aiHistoryForSelection = [],
 }) => {
   const pierreTheme = usePierreTheme({ fontFamily, fontSize });
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
@@ -494,6 +506,11 @@ export const AllFilesDiffView: React.FC<AllFilesDiffViewProps> = ({
         onLineSelection={onLineSelection}
         onAddAnnotation={handleAddAnnotation}
         onEditAnnotation={onEditAnnotation}
+        aiAvailable={aiAvailable}
+        onAskAI={onAskAI}
+        isAILoading={isAILoading}
+        onViewAIResponse={onViewAIResponse}
+        aiHistoryMessages={aiHistoryForSelection}
       />
 
       {fileCommentAnchor && onAddFileComment && (

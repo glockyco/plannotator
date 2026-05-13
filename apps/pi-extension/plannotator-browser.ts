@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createWorktreePool, type WorktreePool } from "./generated/worktree-pool.js";
-import { fileURLToPath } from "node:url";
+import { planHtmlContent, reviewHtmlContent } from "./generated/browser-assets.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	prepareLocalReviewDiff,
@@ -48,21 +48,7 @@ export interface PlanReviewBrowserSession extends BrowserDecisionSession<PlanRev
 	onDecision: (listener: (result: PlanReviewDecision) => void | Promise<void>) => () => void;
 }
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-let planHtmlContent = "";
-let reviewHtmlContent = "";
 
-try {
-	planHtmlContent = readFileSync(resolve(__dirname, "plannotator.html"), "utf-8");
-} catch {
-	// built assets unavailable
-}
-
-try {
-	reviewHtmlContent = readFileSync(resolve(__dirname, "review-editor.html"), "utf-8");
-} catch {
-	// built assets unavailable
-}
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));

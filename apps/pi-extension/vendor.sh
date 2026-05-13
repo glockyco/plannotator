@@ -42,3 +42,25 @@ for f in claude-agent-sdk codex-sdk opencode-sdk pi-sdk pi-sdk-node pi-events; d
   src="../../packages/ai/providers/$f.ts"
   printf '// @generated — DO NOT EDIT. Source: packages/ai/providers/%s.ts\n' "$f" | cat - "$src" > "generated/ai/providers/$f.ts"
 done
+
+bun -e 'const encode = (value) => JSON.stringify(Buffer.from(value).toString("base64"));
+const read = async (path) => {
+  try {
+    return await Bun.file(path).text();
+  } catch {
+    return "";
+  }
+};
+
+const planHtml = await read("plannotator.html");
+const reviewHtml = await read("review-editor.html");
+await Bun.write(
+  "generated/browser-assets.ts",
+  [
+    "// @generated — DO NOT EDIT. Source: apps/pi-extension/{plannotator.html,review-editor.html}",
+    "import { Buffer } from \"node:buffer\";",
+    `export const planHtmlContent = Buffer.from(${encode(planHtml)}, "base64").toString("utf-8");`,
+    `export const reviewHtmlContent = Buffer.from(${encode(reviewHtml)}, "base64").toString("utf-8");`,
+    "",
+  ].join("\n"),
+);'

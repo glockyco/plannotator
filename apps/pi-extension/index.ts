@@ -17,7 +17,8 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
 import type {
@@ -53,6 +54,11 @@ import {
 import { parseAnnotateArgs } from "./generated/annotate-args.js";
 import { parseReviewArgs } from "./generated/review-args.js";
 import { resolveAtReference } from "./generated/at-reference.js";
+import {
+	isOmpUri,
+	resolveOmpUri,
+	type OmpUriSources,
+} from "./generated/omp-uri.js";
 import {
 	hasPlanBrowserHtml,
 	hasReviewBrowserHtml,
@@ -100,6 +106,36 @@ type PersistedPlannotatorState = {
 	lastSubmittedPath?: string;
 	savedState?: SavedPhaseState;
 };
+
+/**
+ * Build the {@link OmpUriSources} bundle for the current OMP session.
+ *
+ * `ctx.sessionManager.getArtifactsDir()` is an OMP extension to the
+ * upstream `ReadonlySessionManager` type (see `pi-coding-agent`
+ * `internal-urls/local-protocol.ts`). The runtime object always has it under
+ * OMP; the cast just narrows the typed surface, which is built against the
+ * upstream Pi types that don't expose `getArtifactsDir`.
+ *
+ * Skill / rule / memory roots come from `$PI_CODING_AGENT_DIR` (OMP's agent
+ * dir env var) or the canonical `~/.omp/agent/` default. Plugin- and
+ * extension-provided skill directories are not reachable from here; that's a
+ * known limitation documented in `packages/shared/omp-uri.ts`.
+ */
+function buildOmpUriSources(ctx: ExtensionContext): OmpUriSources {
+	const sessionManager = ctx.sessionManager as {
+		getArtifactsDir?: () => string | null;
+	};
+	const artifactsDir = sessionManager.getArtifactsDir?.() ?? null;
+	const localRoot = artifactsDir ? join(artifactsDir, "local") : null;
+	const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent");
+	return {
+		artifactsDir,
+		localRoot,
+		skillsRoot: join(agentDir, "skills"),
+		rulesRoot: join(agentDir, "rules"),
+		memoryRoot: join(agentDir, "memory"),
+	};
+}
 
 function getPlanReviewAvailabilityWarning(options: { hasUI: boolean; hasPlanHtml: boolean }): string | null {
 	const { hasUI, hasPlanHtml } = options;
@@ -493,10 +529,39 @@ export default function plannotator(pi: ExtensionAPI): void {
 			// accepted (Pi writes back via sendUserMessage, not stdout).
 			// `rawFilePath` keeps any leading `@` for the literal-@ fallback
 			// (scoped-package-style names).
-			const { filePath, rawFilePath, gate, renderHtml: renderHtmlFlag } = parseAnnotateArgs(args ?? "");
+			const parsed = parseAnnotateArgs(args ?? "");
+			let { filePath, rawFilePath } = parsed;
+			const { gate, renderHtml: renderHtmlFlag } = parsed;
 			if (!filePath) {
-				ctx.ui.notify("Usage: /plannotator-annotate <file.md | file.html | https://... | folder/> [--gate] [--json]", "error");
+				ctx.ui.notify(
+					"Usage: /plannotator-annotate <file.md | file.html | https://... | local://... | folder/> [--gate] [--json]",
+					"error",
+				);
 				return;
+			}
+
+			// OMP internal URIs (local://, skill://, agent://, artifact://, rule://,
+			// memory://) bypass OMP's bash-tool URI expansion when invoked via
+			// slash commands, the `!` shortcut, or a manual terminal call. Resolve
+			// them in-process so all three paths reach the same filesystem target.
+			if (isOmpUri(filePath)) {
+				const resolved = resolveOmpUri(filePath, buildOmpUriSources(ctx));
+				if (resolved.kind === "found") {
+					filePath = resolved.path;
+					rawFilePath = resolved.path;
+				} else if (resolved.kind === "unsupported") {
+					ctx.ui.notify(
+						`Plannotator cannot annotate ${resolved.scheme}:// URIs — supported schemes are local://, skill://, agent://, artifact://, rule://, memory://.`,
+						"error",
+					);
+					return;
+				} else if (resolved.kind === "not_found") {
+					ctx.ui.notify(
+						`Cannot resolve ${filePath}: ${resolved.reason}.`,
+						"error",
+					);
+					return;
+				}
 			}
 			if (!hasPlanBrowserHtml()) {
 				ctx.ui.notify(

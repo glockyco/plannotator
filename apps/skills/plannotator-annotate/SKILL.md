@@ -13,6 +13,14 @@ Run:
 plannotator annotate <path-or-url>
 ```
 
+Inside an OMP (Oh My Pi) session, the `<path-or-url>` argument also accepts OMP internal URIs that resolve session-aware:
+
+- `local://<file>` — session scratch (e.g. `local://PLAN.md`).
+- `skill://<name>[/<file>]` — a discovered skill's SKILL.md or a file inside its directory.
+- `agent://<id>` — agent output for a completed subagent task.
+- `artifact://<id>` — a recorded artifact in the current session.
+- `rule://<name>`, `memory://<name>` — global agent rules and memory.
+
 Behavior:
 
 1. Launch the command with Bash.

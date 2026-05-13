@@ -74,6 +74,8 @@ import { createWorktreePool, type WorktreePool } from "@plannotator/shared/workt
 import { parsePRUrl, checkPRAuth, fetchPR, getCliName, getCliInstallUrl, getMRLabel, getMRNumberLabel, getDisplayRepo } from "@plannotator/server/pr";
 import { writeRemoteShareLink } from "@plannotator/server/share-url";
 import { resolveMarkdownFile, resolveUserPath, hasMarkdownFiles } from "@plannotator/shared/resolve-file";
+import { isOmpUri, resolveOmpUri } from "@plannotator/shared/omp-uri";
+import { buildOmpUriSources } from "@plannotator/shared/omp-uri-discovery";
 import { FILE_BROWSER_EXCLUDED } from "@plannotator/shared/reference-common";
 import { statSync, rmSync, realpathSync, existsSync } from "fs";
 import { parseRemoteUrl } from "@plannotator/shared/repo";
@@ -573,9 +575,9 @@ if (args[0] === "sessions") {
   // ANNOTATE MODE
   // ============================================
 
-  const rawFilePath = args[1];
+  let rawFilePath = args[1];
   if (!rawFilePath) {
-    console.error("Usage: plannotator annotate <file.md | file.html | https://... | folder/>  [--no-jina] [--gate] [--json] [--hook]");
+    console.error("Usage: plannotator annotate <file.md | file.html | https://... | local://... | folder/>  [--no-jina] [--gate] [--json] [--hook]");
     process.exit(1);
   }
 
@@ -586,6 +588,25 @@ if (args[0] === "sessions") {
 
   // Use PLANNOTATOR_CWD if set (original working directory before script cd'd)
   const projectRoot = process.env.PLANNOTATOR_CWD || process.cwd();
+
+  // OMP internal URIs (local://, skill://, agent://, artifact://, rule://,
+  // memory://) bypass OMP's bash-tool URI expansion when the CLI is invoked
+  // from a manual terminal or via OMP's `!` shortcut. Resolve them ourselves
+  // using env vars (set by OMP-side bootstrap) with filesystem session
+  // discovery as fallback.
+  if (isOmpUri(filePath)) {
+    const resolved = resolveOmpUri(filePath, buildOmpUriSources({ cwd: projectRoot }));
+    if (resolved.kind === "found") {
+      filePath = resolved.path;
+      rawFilePath = resolved.path;
+    } else if (resolved.kind === "unsupported") {
+      console.error(`Cannot annotate ${resolved.scheme}:// URIs — supported schemes are local://, skill://, agent://, artifact://, rule://, memory://.`);
+      process.exit(1);
+    } else if (resolved.kind === "not_found") {
+      console.error(`Cannot resolve ${args[1]}: ${resolved.reason}.`);
+      process.exit(1);
+    }
+  }
 
   if (process.env.PLANNOTATOR_DEBUG) {
     console.error(`[DEBUG] Project root: ${projectRoot}`);

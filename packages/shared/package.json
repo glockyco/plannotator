@@ -38,7 +38,9 @@
     "./url-to-markdown": "./url-to-markdown.ts",
     "./tour": "./tour.ts",
     "./annotate-args": "./annotate-args.ts",
-    "./at-reference": "./at-reference.ts"
+    "./at-reference": "./at-reference.ts",
+    "./omp-uri": "./omp-uri.ts",
+    "./omp-uri-discovery": "./omp-uri-discovery.ts"
   },
   "dependencies": {
     "@joplin/turndown-plugin-gfm": "^1.0.64",

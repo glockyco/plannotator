@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -66,7 +66,17 @@ const THINKING_LEVELS = new Set<string>(["minimal", "low", "medium", "high", "xh
 function getAgentConfigDir(): string {
   const envDir = process.env.PI_CODING_AGENT_DIR;
   if (envDir) return envDir;
-  return join(process.env.HOME || process.env.USERPROFILE || homedir(), ".pi", "agent");
+
+  const home = process.env.HOME || process.env.USERPROFILE || homedir();
+  const configDir = process.env.PI_CONFIG_DIR;
+  if (configDir) {
+    return join(isAbsolute(configDir) ? configDir : join(home, configDir), "agent");
+  }
+
+  const ompAgentDir = join(home, ".omp", "agent");
+  if (existsSync(ompAgentDir)) return ompAgentDir;
+
+  return join(home, ".pi", "agent");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

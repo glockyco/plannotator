@@ -16,7 +16,7 @@
   },
   "keywords": ["pi-package", "plannotator", "plan-review", "ai-agent", "coding-agent"],
   "pi": {
-    "extensions": ["./"],
+    "extensions": ["./index.ts"],
     "skills": ["./skills"]
   },
   "files": [

@@ -24,7 +24,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { Key } from "@mariozechner/pi-tui";
+
 import { buildPromptVariables, formatTodoList, loadPlannotatorConfig, renderTemplate, resolvePhaseProfile } from "./config.js";
 import {
 	type ChecklistItem,
@@ -105,12 +105,12 @@ function getPlanReviewAvailabilityWarning(options: { hasUI: boolean; hasPlanHtml
 	const { hasUI, hasPlanHtml } = options;
 	if (hasUI && hasPlanHtml) return null;
 	if (!hasUI && !hasPlanHtml) {
-		return "Plannotator: interactive plan review is unavailable in this session (no UI support and missing built assets). Plans will auto-approve on exit_plan_mode.";
+		return `Plannotator: interactive plan review is unavailable in this session (no UI support and missing built assets). Plans submitted with ${PLAN_SUBMIT_TOOL} will auto-approve.`;
 	}
 	if (!hasUI) {
-		return "Plannotator: interactive plan review is unavailable in this session (no UI support). Plans will auto-approve on exit_plan_mode.";
+		return `Plannotator: interactive plan review is unavailable in this session (no UI support). Plans submitted with ${PLAN_SUBMIT_TOOL} will auto-approve.`;
 	}
-	return "Plannotator: interactive plan review assets are missing. Rebuild the extension to restore the browser UI. Plans will auto-approve on exit_plan_mode.";
+	return `Plannotator: interactive plan review assets are missing. Rebuild the extension to restore the browser UI. Plans submitted with ${PLAN_SUBMIT_TOOL} will auto-approve.`;
 }
 
 function safeNotify(
@@ -743,7 +743,7 @@ export default function plannotator(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrlAlt("p"), {
+	pi.registerShortcut("ctrl+alt+p", {
 		description: "Toggle plannotator",
 		handler: async (ctx) => {
 			await togglePlanMode(ctx);

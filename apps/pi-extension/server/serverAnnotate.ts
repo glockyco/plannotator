@@ -74,6 +74,13 @@ export async function startAnnotateServer(options: {
 	}>((r) => {
 		resolveDecision = r;
 	});
+	const closeBeacon = `<script>window.addEventListener('beforeunload',function(){navigator.sendBeacon('/close');});</script>`;
+	const bodyIdx = options.htmlContent.lastIndexOf("</body>");
+	const htmlWithCloseBeacon =
+		bodyIdx !== -1
+			? options.htmlContent.slice(0, bodyIdx) + closeBeacon + options.htmlContent.slice(bodyIdx)
+			: options.htmlContent + closeBeacon;
+
 
 	// Folder annotation has no stable markdown body, so key drafts by folder path instead.
 	const draftSource =
@@ -168,8 +175,12 @@ export async function startAnnotateServer(options: {
 				const message = err instanceof Error ? err.message : "Failed to process feedback";
 				json(res, { error: message }, 500);
 			}
+		} else if (url.pathname === "/close") {
+			resolveDecision({ feedback: "", annotations: [] });
+			res.writeHead(204);
+			res.end();
 		} else {
-			html(res, options.htmlContent);
+			html(res, htmlWithCloseBeacon);
 		}
 	});
 

@@ -149,6 +149,13 @@ export async function startPlanReviewServer(options: {
 		}
 		return true;
 	};
+	const closeBeacon = `<script>window.addEventListener('beforeunload',function(){navigator.sendBeacon('/close');});</script>`;
+	const bodyIdx = options.htmlContent.lastIndexOf("</body>");
+	const htmlWithCloseBeacon =
+		bodyIdx !== -1
+			? options.htmlContent.slice(0, bodyIdx) + closeBeacon + options.htmlContent.slice(bodyIdx)
+			: options.htmlContent + closeBeacon;
+
 
 	// Draft key for annotation persistence
 	const draftKey = options.mode !== "archive" ? contentHash(options.plan) : "";
@@ -473,8 +480,12 @@ export async function startPlanReviewServer(options: {
 			deleteDraft(draftKey);
 			publishDecision({ approved: false, feedback, savedPath });
 			json(res, { ok: true, savedPath });
+		} else if (url.pathname === "/close") {
+			publishDecision({ approved: false });
+			res.writeHead(204);
+			res.end();
 		} else {
-			html(res, options.htmlContent);
+			html(res, htmlWithCloseBeacon);
 		}
 	});
 

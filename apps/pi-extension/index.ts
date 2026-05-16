@@ -20,7 +20,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import { Type } from "@mariozechner/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -245,6 +244,7 @@ function sendUserMessageWithCurrentSessionFallback(
 
 export default function plannotator(pi: ExtensionAPI): void {
 	const currentPiSession = registerCurrentPiSession(pi);
+	const { Type } = pi.typebox;
 	let phase: Phase = "idle";
 	void registerPlannotatorEventListeners(pi);
 	let lastSubmittedPath: string | null = null;
